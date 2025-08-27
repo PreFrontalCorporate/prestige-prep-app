@@ -9,13 +9,13 @@ importers:
   .:
     dependencies:
       '@google-cloud/storage':
-        specifier: ^7.13.0
+        specifier: ^7.17.0
         version: 7.17.0
       date-fns:
         specifier: ^3.6.0
         version: 3.6.0
       firebase:
-        specifier: ^10.12.0
+        specifier: ^10.14.1
         version: 10.14.1
       firebase-admin:
         specifier: ^13.4.0
@@ -33,53 +33,53 @@ importers:
         specifier: 18.3.1
         version: 18.3.1(react@18.3.1)
       zod:
-        specifier: ^3.23.8
+        specifier: ^3.25.76
         version: 3.25.76
     devDependencies:
       '@playwright/test':
-        specifier: ^1.46.0
+        specifier: ^1.55.0
         version: 1.55.0
       '@testing-library/jest-dom':
-        specifier: ^6.4.8
+        specifier: ^6.8.0
         version: 6.8.0
       '@testing-library/react':
-        specifier: ^16.0.0
+        specifier: ^16.3.0
         version: 16.3.0(@testing-library/dom@10.4.1)(@types/react-dom@18.3.7(@types/react@18.3.24))(@types/react@18.3.24)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@types/lodash':
-        specifier: ^4.14.202
+        specifier: ^4.17.20
         version: 4.17.20
       '@types/node':
-        specifier: ^20.14.13
+        specifier: ^20.19.11
         version: 20.19.11
       '@types/react':
-        specifier: ^18.3.3
+        specifier: ^18.3.24
         version: 18.3.24
       '@types/react-dom':
-        specifier: ^18.3.0
+        specifier: ^18.3.7
         version: 18.3.7(@types/react@18.3.24)
       '@vitest/ui':
-        specifier: ^2.0.5
+        specifier: ^2.1.9
         version: 2.1.9(vitest@2.1.9)
       autoprefixer:
-        specifier: ^10.4.20
+        specifier: ^10.4.21
         version: 10.4.21(postcss@8.5.6)
       jsdom:
         specifier: ^26.1.0
         version: 26.1.0
       playwright:
-        specifier: ^1.46.0
+        specifier: ^1.55.0
         version: 1.55.0
       postcss:
-        specifier: ^8.4.41
+        specifier: ^8.5.6
         version: 8.5.6
       tailwindcss:
-        specifier: ^3.4.10
+        specifier: ^3.4.17
         version: 3.4.17
       typescript:
-        specifier: ^5.5.4
+        specifier: ^5.9.2
         version: 5.9.2
       vitest:
-        specifier: ^2.0.5
+        specifier: ^2.1.9
         version: 2.1.9(@types/node@20.19.11)(@vitest/ui@2.1.9)(jsdom@26.1.0)
 
 packages:
