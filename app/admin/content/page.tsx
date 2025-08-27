@@ -1,55 +1,88 @@
-import { NextResponse } from "next/server";
+// app/admin/content/page.tsx
+import Link from "next/link";
+import { getBaseUrl } from "@/lib/base-url";
+
+export const dynamic = "force-dynamic";
 
 type SetMeta = {
   id: string;
   exam?: string;
   count?: number;
   path?: string;
+  createdAt?: string | number;
 };
 
-async function getSets(): Promise<SetMeta[]> {
-  const res = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL ?? ""}/api/contentSets`, { cache: "no-store" });
-  if (!res.ok) return [];
-  const data = await res.json();
-  return data.sets ?? [];
+async function loadSets(): Promise<{
+  sets: SetMeta[];
+  error?: string;
+  diag?: any;
+}> {
+  const base = getBaseUrl();
+  try {
+    const r = await fetch(`${base}/api/contentSets`, { cache: "no-store" });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const j = await r.json();
+    return { sets: j.sets ?? [] };
+  } catch (e: any) {
+    // Try diag to surface misconfig
+    let diag: any = null;
+    try {
+      const d = await fetch(`${base}/api/diag`, { cache: "no-store" });
+      if (d.ok) diag = await d.json();
+    } catch {}
+    return { sets: [], error: String(e?.message || e), diag };
+  }
 }
 
-export default async function ContentAdminPage() {
-  const sets = await getSets();
+export default async function Page() {
+  const { sets, error, diag } = await loadSets();
 
   return (
-    <div className="container-narrow space-y-6">
-      <h1 className="h1">Content Admin</h1>
+    <div className="mx-auto max-w-5xl p-6 space-y-6">
+      <h1 className="text-2xl font-semibold">Content Admin</h1>
 
-      {sets.length === 0 && (
-        <div className="pp-card p-6">
-          <p className="text-slate-700 mb-3">No sets found.</p>
-          <a className="text-brand-700 underline" href="/drills">Go to Drills →</a>
+      {error && (
+        <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-900">
+          <div className="font-medium">Failed to load sets.</div>
+          <div className="mt-1">Error: {error}</div>
+          {diag && (
+            <details className="mt-3">
+              <summary className="cursor-pointer">Show diagnostics</summary>
+              <pre className="mt-2 overflow-auto rounded bg-white/70 p-2 text-xs">
+                {JSON.stringify(diag, null, 2)}
+              </pre>
+            </details>
+          )}
         </div>
       )}
 
+      {!error && sets.length === 0 && <p>No sets found.</p>}
+
       {sets.length > 0 && (
-        <div className="pp-card p-4">
-          <table className="pp-table">
-            <thead>
+        <div className="overflow-x-auto rounded-md border">
+          <table className="min-w-full text-sm">
+            <thead className="bg-gray-50 text-gray-600">
               <tr>
-                <th className="pp-th">Set</th>
-                <th className="pp-th">GCS Path</th>
-                <th className="pp-th">Count</th>
-                <th className="pp-th">Exam</th>
-                <th className="pp-th">Actions</th>
+                <th className="px-3 py-2 text-left">Set</th>
+                <th className="px-3 py-2 text-left">GCS Path</th>
+                <th className="px-3 py-2 text-right">Count</th>
+                <th className="px-3 py-2 text-left">Exam</th>
+                <th className="px-3 py-2"></th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y">
               {sets.map((s) => (
                 <tr key={s.id}>
-                  <td className="pp-td">{s.id}</td>
-                  <td className="pp-td text-slate-500">{s.path ?? ""}</td>
-                  <td className="pp-td">{s.count ?? "-"}</td>
-                  <td className="pp-td">{s.exam ?? "-"}</td>
-                  <td className="pp-td">
-                    <form action={`/api/loadSet?set=${encodeURIComponent(s.id)}`} method="POST">
-                      <button className="pp-btn-primary">Import</button>
+                  <td className="px-3 py-2 font-medium">{s.id}</td>
+                  <td className="px-3 py-2">{s.path || "—"}</td>
+                  <td className="px-3 py-2 text-right">{s.count ?? "—"}</td>
+                  <td className="px-3 py-2">{s.exam || "—"}</td>
+                  <td className="px-3 py-2">
+                    <form action="/api/loadSet" method="post">
+                      <input type="hidden" name="set" value={s.id} />
+                      <button className="rounded-md bg-blue-600 px-3 py-1.5 text-white shadow-sm hover:bg-blue-700">
+                        Import
+                      </button>
                     </form>
                   </td>
                 </tr>
@@ -59,8 +92,10 @@ export default async function ContentAdminPage() {
         </div>
       )}
 
-      <div>
-        <a className="text-brand-700 underline" href="/drills">Go to Drills →</a>
+      <div className="pt-2">
+        <Link href="/drills" className="text-blue-600 hover:underline">
+          Go to Drills →
+        </Link>
       </div>
     </div>
   );
