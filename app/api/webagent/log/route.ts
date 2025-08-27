@@ -1,55 +1,65 @@
 // app/api/webagent/log/route.ts
-export const dynamic = "force-dynamic";
-export const runtime = "nodejs";
-
 import { NextResponse } from "next/server";
-import * as fs from "fs/promises";
-import * as path from "path";
+import fs from "node:fs/promises";
+import fssync from "node:fs";
+import path from "node:path";
 
-const DEFAULT_DIR = process.env.WEBAGENT_REPORT_DIR ||
-  path.join(process.env.HOME || "/home/donkey_right_productions", "prestige-prep-app/.agent-web/reports");
+export const dynamic = "force-dynamic";
 
-// Parse YYYYMMDD-HHMMSS from webagent-YYYYMMDD-HHMMSS.log
-function parseStamp(name: string): string | null {
-  const m = name.match(/webagent-(\d{8}-\d{6})\.log$/);
-  if (!m) return null;
-  const s = m[1];
-  const iso = `${s.slice(0,4)}-${s.slice(4,6)}-${s.slice(6,8)}T${s.slice(9,11)}:${s.slice(11,13)}:${s.slice(13,15)}Z`;
-  return iso;
+const BASE = "/home/donkey_right_productions/prestige-prep-app";
+const REPORTS = path.join(BASE, ".agent-web", "reports");
+
+async function newest(): Promise<string | null> {
+  try {
+    const entries = await fs.readdir(REPORTS);
+    if (!entries.length) return null;
+    const stats = await Promise.all(
+      entries.map(async (name) => {
+        const p = path.join(REPORTS, name);
+        const st = await fs.stat(p);
+        return { p, m: st.mtimeMs };
+      })
+    );
+    stats.sort((a, b) => b.m - a.m);
+    return stats[0]?.p ?? null;
+  } catch {
+    return null;
+  }
 }
 
 export async function GET(req: Request) {
-  try {
-    const url = new URL(req.url);
-    const dir = url.searchParams.get("dir") || DEFAULT_DIR;
-    const limit = Number(url.searchParams.get("limit") || "600"); // ~last 600 lines
-    const fileParam = url.searchParams.get("file");
+  const { searchParams } = new URL(req.url);
+  const file = searchParams.get("file");
+  const n = Math.max(1, Math.min(2000, Number(searchParams.get("n") || "300")));
 
-    const entries = await fs.readdir(dir).catch(() => []);
-    const logs = entries.filter((f) => f.endsWith(".log")).sort();
-    if (!logs.length) {
-      return NextResponse.json({ ok: true, file: null, lines: [], startedAt: null });
-    }
+  let target = file || (await newest());
 
-    const file = fileParam && logs.includes(fileParam) ? fileParam : logs[logs.length - 1];
-    const full = path.join(dir, file);
-    const buf = await fs.readFile(full, "utf8");
-    const lines = buf.trimEnd().split(/\r?\n/);
-    const tail = lines.slice(-limit);
-
-    const stat = await fs.stat(full);
-    const startedAt = parseStamp(file);
-
-    return NextResponse.json({
-      ok: true,
-      dir,
-      file,
-      size: stat.size,
-      mtime: stat.mtime.toISOString(),
-      startedAt,
-      lines: tail,
-    }, { headers: { "cache-control": "no-store" }});
-  } catch (e: any) {
-    return NextResponse.json({ ok: false, error: String(e?.message || e) }, { status: 500 });
+  if (!target || !fssync.existsSync(target)) {
+    return NextResponse.json({ file: null, lines: [] });
   }
+
+  let text = "";
+  try {
+    text = await fs.readFile(target, "utf8");
+  } catch {
+    // file may be rotating
+    return NextResponse.json({ file: target, lines: [] });
+  }
+
+  const raw = text.replace(/\r\n/g, "\n").split("\n");
+  const lines = raw.slice(Math.max(0, raw.length - n));
+
+  // try to parse start time from first "Start" line
+  const startLine = raw.find((l) => l.includes("Start"));
+  let startedAt: string | null = null;
+  const m = startLine?.match(/\[(WEBAGENT|AGENT)\]\s+(\d{4}-\d{2}-\d{2}T[^\s]+)/);
+  if (m) startedAt = m[2];
+
+  const st = await fs.stat(target);
+  return NextResponse.json({
+    file: target,
+    mtime: st.mtime.toISOString(),
+    startedAt,
+    lines,
+  });
 }
