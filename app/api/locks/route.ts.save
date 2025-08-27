@@ -1,0 +1,16 @@
+import { NextResponse } from "next/server";
+import { db } from "@/lib/firestore";
+
+export async function GET() {
+  try {
+    const uid = "demo-user";
+    const today = new Date().toISOString().slice(0,10);
+    const doc = await db.collection("users").doc(uid).collection("attendance").doc(today).get();
+    if (!doc.exists) {
+      return NextResponse.json({ canDrill: false, reason: "No check-in for today. Please check in." });
+    }
+    return NextResponse.json({ canDrill: true });
+  } catch (e:any) {
+    return new NextResponse(e?.message ?? "error", { status: 500 });
+  }
+}

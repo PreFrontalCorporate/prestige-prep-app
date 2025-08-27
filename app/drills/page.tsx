@@ -1,71 +1,142 @@
+// app/drills/page.tsx
 "use client";
-import { useEffect, useState } from "react";
+
+import { useEffect, useMemo, useState } from "react";
 
 type Item = {
-  id: string; prompt: string;
-  options: Record<string,string>; answer: string;
-  time_target_sec: number;
+  id?: string;
+  exam?: string;
+  section?: string;
+  category?: string;
+  type?: string;
+  difficulty?: number;
+  tags?: string[];
+  stem_latex?: string;
+  choices?: Record<string, string>;
+  answer?: string;
+  explanation_latex?: string;
 };
 
-const demoItems: Item[] = [
-  {
-    id: "SAT-MATH-LIN-CCR-0001",
-    prompt: "If $3x - 5 = 10$, what is $x$?",
-    options: { A:"3", B:"5", C:"15", D:"10/3" },
-    answer: "B",
-    time_target_sec: 60
-  }
-];
-
-export default function Drills() {
+export default function DrillRunner() {
+  const [items, setItems] = useState<Item[]>([]);
   const [idx, setIdx] = useState(0);
-  const [chosen, setChosen] = useState<string | null>(null);
-  const [correctCount, setCorrectCount] = useState(0);
-  const [elapsed, setElapsed] = useState(0);
+  const [score, setScore] = useState(0);
+  const [picked, setPicked] = useState<string | null>(null);
+  const [checked, setChecked] = useState(false);
+  const [setName, setSetName] = useState<string | null>(null);
 
   useEffect(() => {
-    const t = setInterval(() => setElapsed(prev => prev + 1), 1000);
-    return () => clearInterval(t);
-  }, [idx]);
+    (async () => {
+      // pull everything for now (small sets); could page later with ?limit=...
+      const res = await fetch("/api/items?limit=0", { cache: "no-store" });
+      const data = await res.json();
+      setItems(data.items || []);
+      setSetName(data.set || null);
+      setIdx(0);
+      setScore(0);
+      setPicked(null);
+      setChecked(false);
+    })();
+  }, []);
 
-  const item = demoItems[idx];
+  const item = items[idx];
 
-  function submit(choice: string) {
-    setChosen(choice);
-    if (choice === item.answer) setCorrectCount(c => c + 1);
+  const choiceKeys = useMemo(() => {
+    if (!item?.choices) return [];
+    return Object.keys(item.choices).sort(); // A,B,C,D
+  }, [item]);
+
+  function check() {
+    if (!item || picked == null) return;
+    setChecked(true);
+    if (picked === item.answer) {
+      setScore((s) => s + 1);
+    }
   }
+
   function next() {
-    setChosen(null); setElapsed(0);
-    setIdx(i => Math.min(i + 1, demoItems.length - 1));
+    setPicked(null);
+    setChecked(false);
+    if (idx + 1 < items.length) {
+      setIdx((i) => i + 1);
+    }
   }
+
+  const total = items.length || 0;
+  const done = idx >= total - 1;
 
   return (
-    <main className="p-8 space-y-4">
-      <h2 className="text-2xl font-semibold">Drill Runner</h2>
-      <div className="p-4 rounded-md bg-white shadow">
-        <div className="flex justify-between mb-2">
-          <span>Item {idx + 1} / {demoItems.length}</span>
-          <span className="font-mono">Time: {elapsed}s</span>
-        </div>
-        <p className="mb-4">{item.prompt}</p>
-        <div className="grid grid-cols-2 gap-2">
-          {Object.entries(item.options).map(([k, v]) => (
-            <button key={k} onClick={() => submit(k)}
-              className={`border rounded p-2 text-left ${chosen===k ? "bg-blue-100" : "bg-gray-50 hover:bg-gray-100"}`}>
-              <span className="font-semibold mr-2">{k}.</span>{v}
-            </button>
-          ))}
-        </div>
-        {chosen && (
-          <div className="mt-4">
-            {chosen === item.answer
-              ? <p className="text-green-600">Correct ✅</p>
-              : <p className="text-red-600">Incorrect ❌ — Answer is {item.answer}</p>}
-            <button onClick={next} className="mt-3 px-3 py-1 rounded bg-black text-white">Next</button>
-          </div>
-        )}
+    <main className="p-6 space-y-4">
+      <h1 className="text-2xl font-semibold">Drill Runner</h1>
+      <div className="text-sm text-gray-600">
+        {setName ? `Set: ${setName}` : "No set loaded"}
+        {total ? ` • ${idx + 1} / ${total}` : ""}
+        {total ? ` • Score: ${score} / ${total}` : ""}
       </div>
-      <div className="text-sm text-gray-600">Score: {correctCount} / {idx + 1}</div>
+
+      {!item ? (
+        <p>No items. Go to <a className="underline" href="/admin/content">Content Admin</a> and Import a set.</p>
+      ) : (
+        <div className="space-y-3">
+          <div className="text-gray-500 text-sm">
+            {item.section} / {item.type} • {item.category} • diff {item.difficulty}
+          </div>
+          <div className="whitespace-pre-wrap">
+            {/* Keeping raw LaTeX text; can wire KaTeX later */}
+            {item.stem_latex || "(no question text)"}
+          </div>
+
+          <div className="space-y-2">
+            {choiceKeys.map((k) => (
+              <label key={k} className={`block p-2 border rounded ${checked && k === item.answer ? "bg-green-50 border-green-300" : ""}`}>
+                <input
+                  type="radio"
+                  name="choice"
+                  className="mr-2"
+                  disabled={checked}
+                  checked={picked === k}
+                  onChange={() => setPicked(k)}
+                />
+                <strong>{k}.</strong> {item.choices?.[k]}
+              </label>
+            ))}
+          </div>
+
+          {!checked ? (
+            <button
+              className="px-4 py-2 border rounded hover:bg-gray-50 disabled:opacity-50"
+              onClick={check}
+              disabled={picked == null}
+            >
+              Check
+            </button>
+          ) : (
+            <div className="space-y-3">
+              <div className="text-sm">
+                {picked === item.answer ? (
+                  <span className="text-green-700 font-medium">Correct ✅</span>
+                ) : (
+                  <span className="text-red-700 font-medium">
+                    Incorrect ❌ (correct: {item.answer})
+                  </span>
+                )}
+              </div>
+              {item.explanation_latex && (
+                <div className="p-3 bg-gray-50 border rounded whitespace-pre-wrap">
+                  {item.explanation_latex}
+                </div>
+              )}
+              <button
+                className="px-4 py-2 border rounded hover:bg-gray-50 disabled:opacity-50"
+                onClick={next}
+                disabled={done}
+              >
+                {done ? "Done" : "Next"}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
     </main>
   );
 }
