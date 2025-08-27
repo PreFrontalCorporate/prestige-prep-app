@@ -87,17 +87,19 @@ async function startAction(formData: FormData) {
   const timeout = String(formData.get("timeout") || "9000");
   const goals = String(formData.get("goals") || defaultGoals);
 
-  // ensure dirs
+  // ensure dirs & goals file
   await fs.mkdir(AGENT_DIR, { recursive: true });
   await fs.mkdir(path.join(AGENT_DIR, "reports"), { recursive: true });
   await fs.writeFile(GOALS_FILE, goals, "utf8");
 
-  const logName = `webagent-$(date +%Y%m%d-%H%M%S).log`;
+  // IMPORTANT: do NOT chain `&&` immediately after `&`.
+  // We split to a new line, then write $! to the PID file.
   const cmd = [
     `cd "${BASE}"`,
-    `nohup ./.agent-web/run_webagent.sh --repo "${BASE}" --model "${model}" --iters "${iters}" --timeout "${timeout}" --goals-file "${GOALS_FILE}" >> "${AGENT_DIR}/reports/${logName}" 2>&1 &`,
+    `LOG="${AGENT_DIR}/reports/webagent-$(date +%Y%m%d-%H%M%S).log"`,
+    `nohup ./.agent-web/run_webagent.sh --repo "${BASE}" --model "${model}" --iters "${iters}" --timeout "${timeout}" --goals-file "${GOALS_FILE}" >> "$LOG" 2>&1 &`,
     `echo $! > "${PID_FILE}"`
-  ].join(" && ");
+  ].join("\n");
 
   await sh(cmd);
 }
@@ -106,7 +108,12 @@ async function stopAction() {
   "use server";
   const pid = await readpid();
   if (!pid) return;
-  await sh(`kill -TERM ${pid} 2>/dev/null || true; sleep 1; kill -0 ${pid} 2>/dev/null && kill -KILL ${pid} 2>/dev/null || true; rm -f "${PID_FILE}" || true`);
+  await sh(
+    `kill -TERM ${pid} 2>/dev/null || true; ` +
+      `sleep 1; ` +
+      `kill -0 ${pid} 2>/dev/null && kill -KILL ${pid} 2>/dev/null || true; ` +
+      `rm -f "${PID_FILE}" || true`
+  );
 }
 
 async function publishToVM() {
@@ -124,7 +131,8 @@ async function commitAndPush(formData: FormData) {
   "use server";
   const branch = String(formData.get("branch") || "");
   const msgRaw = String(formData.get("message") || "web-agent: patch ...");
-  const branchName = branch || `agent-${new Date().toISOString().replace(/[-:T.Z]/g, "").slice(0, 14)}`;
+  const branchName =
+    branch || `agent-${new Date().toISOString().replace(/[-:T.Z]/g, "").slice(0, 14)}`;
   const safeMsg = msgRaw.replace(/(["`\\$])/g, "\\$1");
 
   const cmd = [
