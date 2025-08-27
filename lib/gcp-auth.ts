@@ -1,25 +1,46 @@
 // lib/gcp-auth.ts
-import fs from "node:fs";
+// Robustly provision GOOGLE_APPLICATION_CREDENTIALS at runtime.
+// Supports either:
+//  - GOOGLE_APPLICATION_CREDENTIALS_JSON_B64 (base64 of the whole JSON)
+//  - GOOGLE_APPLICATION_CREDENTIALS_JSON (raw JSON string)
+// Falls back to existing GOOGLE_APPLICATION_CREDENTIALS or ADC on GCE.
 
-// If Vercel provides raw SA JSON, write it to /tmp and point ADC at it.
-const raw = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
-if (raw) {
+import fs from "fs";
+import os from "os";
+import path from "path";
+
+const TARGET =
+  process.env.GOOGLE_APPLICATION_CREDENTIALS ||
+  path.join(os.tmpdir(), "gcp-sa.json");
+
+function provisionFromEnv(): "b64" | "json" | null {
   try {
-    const target = "/tmp/gcp-sa.json";
-    if (!process.env.GOOGLE_APPLICATION_CREDENTIALS) {
-      fs.writeFileSync(target, raw, "utf8");
-      process.env.GOOGLE_APPLICATION_CREDENTIALS = target;
+    const b64 = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON_B64?.trim();
+    if (b64) {
+      const json = Buffer.from(b64, "base64").toString("utf8");
+      fs.writeFileSync(TARGET, json, { mode: 0o600 });
+      process.env.GOOGLE_APPLICATION_CREDENTIALS = TARGET;
+      return "b64";
     }
-  } catch (err) {
-    console.error("[gcp-auth] Failed writing credentials:", err);
+
+    const raw = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
+    if (raw && raw.trim().length > 0) {
+      // Write as-is (don’t JSON.parse to avoid “control character” issues).
+      fs.writeFileSync(TARGET, raw.trim(), { mode: 0o600 });
+      process.env.GOOGLE_APPLICATION_CREDENTIALS = TARGET;
+      return "json";
+    }
+  } catch (e) {
+    console.error("[gcp-auth] Failed writing SA JSON:", e);
   }
+  return null;
 }
 
-// Normalize project id for Google SDKs if missing
-if (!process.env.GOOGLE_CLOUD_PROJECT) {
-  const proj =
-    process.env.FIREBASE_PROJECT_ID ||
-    process.env.GCP_PROJECT ||
-    process.env.GOOGLE_CLOUD_PROJECT;
-  if (proj) process.env.GOOGLE_CLOUD_PROJECT = proj;
+const source = provisionFromEnv();
+if (!source) {
+  if (!process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+    console.warn(
+      "[gcp-auth] No credentials JSON provided; relying on default ADC (GCE/Cloud Run) or existing key on disk."
+    );
+  }
 }
