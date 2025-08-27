@@ -10,7 +10,7 @@ export const revalidate = 0;
 
 const exec = promisify(execCb);
 
-// ----- VM-specific paths (adjust if needed)
+// ----- VM-specific paths
 const BASE = "/home/donkey_right_productions/prestige-prep-app";
 const AGENT_DIR = path.join(BASE, ".agent-web");
 const PID_FILE = path.join(AGENT_DIR, "run.pid");
@@ -18,7 +18,6 @@ const GOALS_FILE = path.join(AGENT_DIR, "goals.txt");
 
 // ----- helpers
 async function sh(cmd: string) {
-  // run via bash -lc for && and env expansion
   return exec(cmd, { shell: "/bin/bash" });
 }
 
@@ -51,7 +50,7 @@ async function newestLogPath(): Promise<string | null> {
   }
 }
 
-// ----- default goals text (pre-fill)
+// ----- default goals
 const defaultGoals = `Implement the following features, iterating with small, safe patches until \`pnpm build\` passes and basic flows work:
 
 1) Learning Methodologies Pages
@@ -88,17 +87,15 @@ async function startAction(formData: FormData) {
   const timeout = String(formData.get("timeout") || "9000");
   const goals = String(formData.get("goals") || defaultGoals);
 
+  // ensure dirs
   await fs.mkdir(AGENT_DIR, { recursive: true });
+  await fs.mkdir(path.join(AGENT_DIR, "reports"), { recursive: true });
   await fs.writeFile(GOALS_FILE, goals, "utf8");
 
-  // Use the provided runner script which calls web_agent.py
-  // and writes logs into .agent-web/reports/*.log and PID into run.pid.
   const logName = `webagent-$(date +%Y%m%d-%H%M%S).log`;
   const cmd = [
     `cd "${BASE}"`,
-    // nohup so it keeps running after request returns
     `nohup ./.agent-web/run_webagent.sh --repo "${BASE}" --model "${model}" --iters "${iters}" --timeout "${timeout}" --goals-file "${GOALS_FILE}" >> "${AGENT_DIR}/reports/${logName}" 2>&1 &`,
-    // capture background PID
     `echo $! > "${PID_FILE}"`
   ].join(" && ");
 
@@ -109,14 +106,11 @@ async function stopAction() {
   "use server";
   const pid = await readpid();
   if (!pid) return;
-
-  // Try a graceful TERM, then KILL after a short wait
   await sh(`kill -TERM ${pid} 2>/dev/null || true; sleep 1; kill -0 ${pid} 2>/dev/null && kill -KILL ${pid} 2>/dev/null || true; rm -f "${PID_FILE}" || true`);
 }
 
 async function publishToVM() {
   "use server";
-  // Build and restart systemd unit (sudoers already configured)
   const cmd = [
     `cd "${BASE}"`,
     `which pnpm >/dev/null 2>&1 || source ~/.nvm/nvm.sh >/dev/null 2>&1`,
@@ -130,11 +124,7 @@ async function commitAndPush(formData: FormData) {
   "use server";
   const branch = String(formData.get("branch") || "");
   const msgRaw = String(formData.get("message") || "web-agent: patch ...");
-
-  const branchName =
-    branch || `agent-${new Date().toISOString().replace(/[-:T.Z]/g, "").slice(0, 14)}`;
-
-  // Escape characters problematic in a double-quoted shell string.
+  const branchName = branch || `agent-${new Date().toISOString().replace(/[-:T.Z]/g, "").slice(0, 14)}`;
   const safeMsg = msgRaw.replace(/(["`\\$])/g, "\\$1");
 
   const cmd = [
@@ -160,7 +150,9 @@ export default async function Page() {
       <h1 className="text-2xl font-semibold">Web Agent (Next.js)</h1>
 
       <div className="rounded-xl border p-4 space-y-2">
-        <div>PID: {running ? <span className="text-green-600 font-mono">{pid}</span> : <span className="text-gray-500">—</span>} {running ? "🟢 running" : "⚪ stopped"}</div>
+        <div>
+          PID: {running ? <span className="text-green-600 font-mono">{pid}</span> : <span className="text-gray-500">—</span>} {running ? "🟢 running" : "⚪ stopped"}
+        </div>
         <div>Branch: <code>main</code></div>
       </div>
 
@@ -182,24 +174,15 @@ export default async function Page() {
         </div>
         <label className="block">
           <div className="text-sm text-gray-600">Goals</div>
-          <textarea
-            name="goals"
-            defaultValue={defaultGoals}
-            rows={10}
-            className="w-full border rounded px-2 py-1 font-mono text-sm"
-          />
+          <textarea name="goals" defaultValue={defaultGoals} rows={10} className="w-full border rounded px-2 py-1 font-mono text-sm" />
         </label>
-        <button className="rounded bg-black text-white px-3 py-1" type="submit">
-          Start
-        </button>
+        <button className="rounded bg-black text-white px-3 py-1" type="submit">Start</button>
       </form>
 
       <form action={stopAction} className="rounded-xl border p-4 space-y-3">
         <h2 className="font-semibold">Stop</h2>
         <p className="text-sm text-gray-600">Send SIGTERM to the current PID (if any).</p>
-        <button className="rounded bg-rose-600 text-white px-3 py-1" type="submit">
-          Stop Agent
-        </button>
+        <button className="rounded bg-rose-600 text-white px-3 py-1" type="submit">Stop Agent</button>
       </form>
 
       <form action={publishToVM} className="rounded-xl border p-4 space-y-3">
@@ -207,9 +190,7 @@ export default async function Page() {
         <p className="text-sm text-gray-600">
           Runs <code>pnpm build</code> then <code>systemctl restart prestige-prep</code>. Refresh your browser to see the update.
         </p>
-        <button className="rounded bg-indigo-600 text-white px-3 py-1" type="submit">
-          Publish to VM
-        </button>
+        <button className="rounded bg-indigo-600 text-white px-3 py-1" type="submit">Publish to VM</button>
       </form>
 
       <form action={commitAndPush} className="rounded-xl border p-4 space-y-3">
@@ -217,24 +198,14 @@ export default async function Page() {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <label className="block">
             <div className="text-sm text-gray-600">Branch</div>
-            <input
-              name="branch"
-              placeholder="agent-YYYYMMDDHHMMSS"
-              className="w-full border rounded px-2 py-1"
-            />
+            <input name="branch" placeholder="agent-YYYYMMDDHHMMSS" className="w-full border rounded px-2 py-1" />
           </label>
           <label className="block">
             <div className="text-sm text-gray-600">Commit message</div>
-            <input
-              name="message"
-              defaultValue="web-agent: patch ..."
-              className="w-full border rounded px-2 py-1"
-            />
+            <input name="message" defaultValue="web-agent: patch ..." className="w-full border rounded px-2 py-1" />
           </label>
         </div>
-        <button className="rounded bg-emerald-600 text-white px-3 py-1" type="submit">
-          Commit &amp; Push
-        </button>
+        <button className="rounded bg-emerald-600 text-white px-3 py-1" type="submit">Commit &amp; Push</button>
       </form>
 
       <div className="rounded-xl border p-4 space-y-2">
@@ -242,7 +213,6 @@ export default async function Page() {
         <p className="text-sm text-gray-600">
           {lastLog ? <>Latest: <code className="break-all">{lastLog}</code></> : "No logs yet."}
         </p>
-        {/* Client log viewer */}
         <LiveLog />
       </div>
     </div>
