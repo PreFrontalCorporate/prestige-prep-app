@@ -1,40 +1,45 @@
 // lib/base-url.ts
-// Robust absolute URL builder for server actions / fetches
-import type { Headers as NextHeaders } from 'next/dist/server/web/spec-extension/adapters/headers';
+// Robust absolute URL builder without importing Next internals.
+
+type HeaderGetter = { get(name: string): string | null } | Headers | undefined;
 
 function trimSlash(s: string) {
   return s.replace(/\/+$/, '');
 }
 
-/** Resolve an origin string from env or headers */
-export function getOrigin(hdrs?: Headers | NextHeaders): string {
-  // 1) Explicit override
-  const envURL = process.env.NEXT_PUBLIC_BASE_URL;
-  if (envURL && envURL.trim()) return trimSlash(envURL.trim());
-
-  // 2) Vercel convenience var (e.g. my-app.vercel.app)
-  const vercelURL = process.env.VERCEL_URL;
-  if (vercelURL) return `https://${trimSlash(vercelURL)}`;
-
-  // 3) Try forwarded headers (works behind proxies)
-  if (hdrs) {
-    // @ts-ignore — compatible for both std Headers and NextHeaders
-    const proto = hdrs.get?.('x-forwarded-proto');
-    // @ts-ignore
-    const host = hdrs.get?.('x-forwarded-host') ?? hdrs.get?.('host');
-    if (proto && host) return `${proto}://${host}`;
-  }
-
-  // 4) Other common envs
-  const url = process.env.URL || process.env.NEXTAUTH_URL;
-  if (url) return trimSlash(url);
-
-  // 5) Fallback (dev)
-  return 'http://localhost:3000';
+function nonEmpty(v?: string | null) {
+  return typeof v === 'string' && v.trim().length > 0;
 }
 
-/** Return absolute URL given a path like '/api/foo' */
-export function absoluteUrl(path: string, hdrs?: Headers | NextHeaders) {
+/** Resolve origin from env or proxy headers */
+export function getOrigin(hdrs?: HeaderGetter): string {
+  // 1) Explicit env
+  const envURL =
+    process.env.NEXT_PUBLIC_BASE_URL ||
+    process.env.URL ||
+    process.env.NEXTAUTH_URL;
+  if (nonEmpty(envURL)) return trimSlash(envURL as string);
+
+  // 2) Vercel convenience
+  const vercelURL = process.env.VERCEL_URL;
+  if (nonEmpty(vercelURL)) return `https://${trimSlash(vercelURL as string)}`;
+
+  // 3) Proxy headers
+  if (hdrs && typeof (hdrs as any).get === 'function') {
+    const get = (hdrs as any).get.bind(hdrs) as (k: string) => string | null;
+    const proto = get('x-forwarded-proto') || 'https';
+    const host = get('x-forwarded-host') || get('host');
+    if (nonEmpty(host)) return `${proto}://${host}`;
+  }
+
+  // 4) Fallbacks
+  return process.env.NODE_ENV === 'production'
+    ? 'https://localhost'
+    : 'http://localhost:3000';
+}
+
+/** Build an absolute URL from a path like '/api/foo' */
+export function absoluteUrl(path: string, hdrs?: HeaderGetter): string {
   const origin = getOrigin(hdrs);
   const p = path.startsWith('/') ? path : `/${path}`;
   return `${origin}${p}`;
