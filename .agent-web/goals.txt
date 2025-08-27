@@ -1,25 +1,26 @@
-Implement the following features, iterating with small, safe patches until `pnpm build` passes and basic flows work:
+Polish + Learning features
 
-1) Learning Methodologies Pages
-   - Create a top page at /methods listing these methodologies with short descriptions:
-     • Active Recall • Spaced Repetition • Interleaving • Deliberate Practice • Mastery Learning • Worked Examples • Fading (Scaffold Reduction) • Retrieval Practice (with confidence) • Timed Drills & Benchmarks • Error Logging & Reflection
-   - Each links to /methods/[slug] with a lightweight explainer and how the app supports it.
+1) Fast Content Picker (Drills)
+   - Add a compact picker on /drills to switch current content set instantly.
+   - Use existing loader logic; keep TypeScript strict.
 
-2) Time & Score Tracking
-   - Track per-item attempts: sessionId (cookie), setId, itemId, section, tags, difficulty, chosen answer, correctness, elapsedMs, timestamp.
-   - Persist to Firestore via lib/firestore.ts in collection "attempts" -> doc(sessionId) -> subcollection "events".
-   - Add minimal server actions from /drills to record attempts (avoid public /api where possible).
+2) Store Attempts (Server Actions)
+   - Capture: sessionId, setId, itemId, section, tags, difficulty, answer, correctness, elapsedMs, confidence, timestamp.
+   - Persist to Firestore under attempts/{sessionId}/events.
+   - Avoid public APIs when possible; prefer server actions.
 
-3) Fast Content Picker
-   - Add a quick picker on /drills (and/or /dashboard) to switch the current content set immediately using existing loader logic.
+3) Attendance Card Upgrade
+   - "Punch-in" success animation (confetti/flash) after check-in.
+   - Keep animations subtle and fast.
 
-4) Recommended Learning (from mistakes)
-   - Aggregate recent attempts (e.g., last 50) and rank weak areas by section/tag and difficulty.
-   - Add /recommended that shows top weak areas and links to focused drills (or at least presents suggested scopes).
+4) Theming & Background Polish
+   - Light gradient backgrounds or subtle textures; respect performance.
+   - Prepare for dark mode later.
 
-5) KaTeX & Polish
-   - Integrate KaTeX to render LaTeX in items/explanations (minimal deps).
-   - Gentle UI polish: spacing, headings, small quality-of-life improvements. Keep changes incremental.
+5) Recommended Expansions
+   - Aggregate last 50 attempts by tag/section+difficulty.
+   - Render top weak areas with a “Start a focused drill” CTA.
 
 Guardrails:
-- Small diffs only; keep existing features stable. Use server actions over public API. Keep TypeScript strict. Ensure `pnpm build` stays green.
+- Small, safe diffs; keep build green.
+- No breaking existing flows.

@@ -1,27 +1,50 @@
-import Link from "next/link";
+// app/page.tsx
+import Link from 'next/link';
+
+const Card = ({
+  href,
+  title,
+  desc,
+}: {
+  href: string;
+  title: string;
+  desc: string;
+}) => (
+  <Link
+    href={href}
+    className="block rounded-2xl bg-white px-6 py-5 shadow-md ring-1 ring-slate-100 hover:shadow-lg transition"
+  >
+    <div className="text-lg font-semibold">{title}</div>
+    <div className="text-slate-600 text-sm mt-1">{desc}</div>
+  </Link>
+);
 
 export default function Home() {
   return (
-    <div className="container-narrow space-y-8">
-      <h1 className="h1">Prestige Prep</h1>
-      <p className="text-slate-600">
-        High-fidelity SAT/ACT practice with strict attendance, timing, and analytics.
+    <main className="container mx-auto px-4 pt-12">
+      <h1 className="text-4xl font-semibold">Prestige Prep</h1>
+      <p className="text-slate-600 mt-3 max-w-2xl">
+        High-fidelity SAT/ACT practice with strict attendance, timing, and
+        analytics.
       </p>
 
-      <div className="grid sm:grid-cols-3 gap-4">
-        <Link href="/dashboard" className="pp-card p-5 hover:shadow-md transition">
-          <div className="h3 mb-1">Dashboard</div>
-          <p className="text-sm text-slate-600">Progress, streaks, and goals.</p>
-        </Link>
-        <Link href="/drills" className="pp-card p-5 hover:shadow-md transition">
-          <div className="h3 mb-1">Drill Runner</div>
-          <p className="text-sm text-slate-600">Timed items with scoring.</p>
-        </Link>
-        <Link href="/attendance" className="pp-card p-5 hover:shadow-md transition">
-          <div className="h3 mb-1">Attendance</div>
-          <p className="text-sm text-slate-600">Daily check-in & strict locks.</p>
-        </Link>
+      <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 max-w-5xl">
+        <Card
+          href="/dashboard"
+          title="Dashboard"
+          desc="Progress, streaks, and goals."
+        />
+        <Card
+          href="/drills"
+          title="Drill Runner"
+          desc="Timed items with scoring."
+        />
+        <Card
+          href="/attendance"
+          title="Attendance"
+          desc="Daily check-in & strict locks."
+        />
       </div>
-    </div>
+    </main>
   );
 }

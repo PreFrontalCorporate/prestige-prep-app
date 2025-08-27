@@ -1,86 +1,80 @@
 // app/admin/content/page.tsx
-import Link from "next/link";
-import { getBaseUrl } from "@/lib/base-url";
+import { headers } from 'next/headers';
+import { absoluteUrl } from '@/lib/base-url';
+import { revalidatePath } from 'next/cache';
 
-export const dynamic = "force-dynamic";
-
-type SetMeta = {
-  id: string;
+type SetInfo = {
+  name: string;
   exam?: string;
-  count?: number;
-  path?: string;
-  createdAt?: string | number;
+  count?: number | null;
+  gcsPath?: string | null;
 };
 
-async function loadSets(): Promise<{
-  sets: SetMeta[];
-  error?: string;
-  diag?: any;
-}> {
-  const base = getBaseUrl();
-  try {
-    const r = await fetch(`${base}/api/contentSets`, { cache: "no-store" });
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    const j = await r.json();
-    return { sets: j.sets ?? [] };
-  } catch (e: any) {
-    // Try diag to surface misconfig
-    let diag: any = null;
-    try {
-      const d = await fetch(`${base}/api/diag`, { cache: "no-store" });
-      if (d.ok) diag = await d.json();
-    } catch {}
-    return { sets: [], error: String(e?.message || e), diag };
-  }
+async function fetchSets() {
+  const hdrs = headers();
+  const res = await fetch(absoluteUrl('/api/contentSets', hdrs), {
+    cache: 'no-store',
+  });
+  if (!res.ok) return [] as SetInfo[];
+  const json = await res.json().catch(() => ({}));
+  return (json?.sets ?? []) as SetInfo[];
 }
 
-export default async function Page() {
-  const { sets, error, diag } = await loadSets();
+export default async function ContentAdminPage() {
+  const sets = await fetchSets();
+
+  async function importSetAction(formData: FormData) {
+    'use server';
+    const setName = String(formData.get('set') ?? '').trim();
+    if (!setName) return;
+    const hdrs = headers();
+    await fetch(absoluteUrl('/api/loadSet', hdrs), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ setName }),
+      cache: 'no-store',
+    });
+    revalidatePath('/drills');
+    revalidatePath('/admin/content');
+  }
 
   return (
-    <div className="mx-auto max-w-5xl p-6 space-y-6">
-      <h1 className="text-2xl font-semibold">Content Admin</h1>
+    <main className="container mx-auto px-4 pt-10">
+      <h1 className="text-3xl font-semibold mb-6">Content Admin</h1>
 
-      {error && (
-        <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-900">
-          <div className="font-medium">Failed to load sets.</div>
-          <div className="mt-1">Error: {error}</div>
-          {diag && (
-            <details className="mt-3">
-              <summary className="cursor-pointer">Show diagnostics</summary>
-              <pre className="mt-2 overflow-auto rounded bg-white/70 p-2 text-xs">
-                {JSON.stringify(diag, null, 2)}
-              </pre>
-            </details>
-          )}
+      {sets.length === 0 ? (
+        <div className="rounded-lg border bg-white shadow-sm p-6">
+          <p className="text-slate-700 mb-2">No sets found.</p>
+          <a className="text-blue-600 hover:underline" href="/drills">
+            Go to Drills →
+          </a>
         </div>
-      )}
-
-      {!error && sets.length === 0 && <p>No sets found.</p>}
-
-      {sets.length > 0 && (
-        <div className="overflow-x-auto rounded-md border">
+      ) : (
+        <div className="rounded-lg border bg-white shadow-sm overflow-hidden">
           <table className="min-w-full text-sm">
-            <thead className="bg-gray-50 text-gray-600">
+            <thead className="bg-slate-50 text-slate-700">
               <tr>
-                <th className="px-3 py-2 text-left">Set</th>
-                <th className="px-3 py-2 text-left">GCS Path</th>
-                <th className="px-3 py-2 text-right">Count</th>
-                <th className="px-3 py-2 text-left">Exam</th>
-                <th className="px-3 py-2"></th>
+                <th className="text-left px-4 py-3">Set</th>
+                <th className="text-left px-4 py-3">GCS Path</th>
+                <th className="text-left px-4 py-3">Count</th>
+                <th className="text-left px-4 py-3">Exam</th>
+                <th className="text-left px-4 py-3">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y">
+            <tbody>
               {sets.map((s) => (
-                <tr key={s.id}>
-                  <td className="px-3 py-2 font-medium">{s.id}</td>
-                  <td className="px-3 py-2">{s.path || "—"}</td>
-                  <td className="px-3 py-2 text-right">{s.count ?? "—"}</td>
-                  <td className="px-3 py-2">{s.exam || "—"}</td>
-                  <td className="px-3 py-2">
-                    <form action="/api/loadSet" method="post">
-                      <input type="hidden" name="set" value={s.id} />
-                      <button className="rounded-md bg-blue-600 px-3 py-1.5 text-white shadow-sm hover:bg-blue-700">
+                <tr key={s.name} className="border-t">
+                  <td className="px-4 py-3 font-medium">{s.name}</td>
+                  <td className="px-4 py-3">{s.gcsPath ?? '—'}</td>
+                  <td className="px-4 py-3">{s.count ?? '—'}</td>
+                  <td className="px-4 py-3">{s.exam ?? '—'}</td>
+                  <td className="px-4 py-3">
+                    <form action={importSetAction}>
+                      <input type="hidden" name="set" value={s.name} />
+                      <button
+                        type="submit"
+                        className="inline-flex items-center rounded-md bg-blue-600 px-3 py-1.5 text-white hover:bg-blue-700 transition"
+                      >
                         Import
                       </button>
                     </form>
@@ -92,11 +86,11 @@ export default async function Page() {
         </div>
       )}
 
-      <div className="pt-2">
-        <Link href="/drills" className="text-blue-600 hover:underline">
+      <div className="mt-6">
+        <a className="text-blue-600 hover:underline" href="/drills">
           Go to Drills →
-        </Link>
+        </a>
       </div>
-    </div>
+    </main>
   );
 }
