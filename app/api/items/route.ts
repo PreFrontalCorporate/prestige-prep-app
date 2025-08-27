@@ -1,22 +1,45 @@
 // app/api/items/route.ts
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
+import { readTextFile } from "@/lib/gcs";
+import { db } from "@/lib/firestore";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(req: NextRequest) {
-  const g: any = globalThis as any;
-  const cache = g.__CONTENT_CACHE__ || { set: null, items: [] as any[] };
-  const url = new URL(req.url);
-  const limit = Math.max(0, parseInt(url.searchParams.get("limit") || "0", 10));
-  const offset = Math.max(0, parseInt(url.searchParams.get("offset") || "0", 10));
+async function getSetFromRuntime(): Promise<string | null> {
+  try {
+    const doc = await db.collection("runtime").doc("currentSet").get();
+    return doc.exists ? (doc.data()?.id as string) : null;
+  } catch {
+    return null;
+  }
+}
 
-  let items = cache.items || [];
-  if (offset) items = items.slice(offset);
-  if (limit) items = items.slice(0, limit);
+export async function GET(req: Request) {
+  const { searchParams } = new URL(req.url);
+  const limitRaw = searchParams.get("limit") ?? "";
+  const limit = Math.max(0, Math.min(Number(limitRaw || "0"), 1000));
 
-  return NextResponse.json({
-    set: cache.set,
-    count: (cache.items || []).length,
-    items,
-  });
+  const setFromQuery = searchParams.get("set");
+  const setFromCookie = cookies().get("pp-set")?.value;
+  const set = setFromQuery || setFromCookie || (await getSetFromRuntime());
+
+  if (!set) {
+    return NextResponse.json({ set: null, count: 0, items: [] });
+  }
+
+  try {
+    const text = await readTextFile(`content/sets/${set}/items.jsonl`);
+    const lines = text.split(/\r?\n/).filter(Boolean);
+    const parsed = lines.map((l) => JSON.parse(l));
+    const items = limit ? parsed.slice(0, limit) : parsed;
+    return NextResponse.json({ set, count: parsed.length, items });
+  } catch (e: any) {
+    return NextResponse.json({
+      set,
+      count: 0,
+      items: [],
+      error: String(e?.message || e),
+    });
+  }
 }
