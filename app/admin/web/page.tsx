@@ -1,109 +1,134 @@
-import fs from "node:fs/promises";
-import path from "node:path";
-import { execFile } from "node:child_process";
+// app/admin/web/page.tsx
+import "server-only";
+import { cookies } from "next/headers";
+import { revalidatePath } from "next/cache";
+import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
+import path from "node:path";
+const pexec = promisify(execFile);
 
-const execFileP = promisify(execFile);
-export const dynamic = "force-dynamic"; // always read fresh PID/logs
+export const dynamic = "force-dynamic";
 
-async function readPid(): Promise<string | null> {
-  const p = path.join(process.cwd(), ".agent-web", "run.pid");
-  try { return (await fs.readFile(p, "utf8")).trim(); } catch { return null; }
-}
+const BASE = process.env.HOME
+  ? path.join(process.env.HOME, "prestige-prep-app")
+  : process.cwd();
+const RUNNER = path.join(BASE, ".agent-web/run_webagent.sh");
+const STOPPER = path.join(BASE, ".agent-web/stop_webagent.sh");
+const PIDFILE = path.join(BASE, ".agent-web/run_webagent.pid");
 
-async function tailLog(n = 80): Promise<string> {
-  const reportsDir = path.join(process.cwd(), ".agent-web", "reports");
+async function readPid(): Promise<number | null> {
   try {
-    const files = (await fs.readdir(reportsDir))
-      .filter(f => f.startsWith("webagent-") && f.endsWith(".log"))
-      .sort().reverse();
-    if (!files.length) return "No logs yet.";
-    const latest = path.join(reportsDir, files[0]);
-    const content = await fs.readFile(latest, "utf8");
-    const lines = content.trim().split("\n");
-    return lines.slice(-n).join("\n");
-  } catch { return "No logs yet."; }
+    const { stdout } = await pexec("bash", ["-lc", `cat "${PIDFILE}"`]);
+    const pid = parseInt(stdout.trim(), 10);
+    if (!Number.isFinite(pid)) return null;
+    // ensure it's alive
+    await pexec("bash", ["-lc", `ps -p ${pid} >/dev/null 2>&1 && echo alive || echo dead`]);
+    return pid;
+  } catch {
+    return null;
+  }
 }
 
-async function currentBranch(): Promise<string> {
-  try {
-    const { stdout } = await execFileP("bash", ["-lc", "git rev-parse --abbrev-ref HEAD"], { cwd: process.cwd() });
-    return stdout.trim();
-  } catch { return "unknown"; }
-}
-
-async function runJson(): Promise<any | null> {
-  try {
-    const p = path.join(process.cwd(), ".agent-web", "run.json");
-    return JSON.parse(await fs.readFile(p, "utf8"));
-  } catch { return null; }
-}
-
-/* ---------- SERVER ACTIONS ---------- */
-
-async function startAction(formData: FormData) {
+async function startAgent(formData: FormData) {
   "use server";
-  const model = (formData.get("model") as string) || "gemini-2.5-pro";
-  const iters = Number(formData.get("iters") || 25);
-  const timeout = Number(formData.get("timeout") || 9000);
-  const goals = (formData.get("goals") as string) || "";
+  const model = String(formData.get("model") || "gemini-2.5-pro");
+  const iters = String(formData.get("iters") || "25");
+  const timeout = String(formData.get("timeout") || "9000");
+  const goals = String(formData.get("goals") || "");
+  // Pass env through so the runner can see model/iters/timeout/goals
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn("bash", ["-lc", `"${RUNNER}"`], {
+      stdio: "ignore",
+      env: {
+        ...process.env,
+        MODEL: model,
+        ITERS: iters,
+        TIMEOUT: timeout,
+        GOALS_TEXT: goals,
+      },
+      shell: true,
+    });
+    child.on("error", reject);
+    child.on("exit", () => resolve());
+  });
+  revalidatePath("/admin/web");
+}
 
-  const agentDir = path.join(process.cwd(), ".agent-web");
-  await fs.mkdir(agentDir, { recursive: true });
-  const goalsPath = path.join(agentDir, "goals.txt");
-  await fs.writeFile(goalsPath, goals, "utf8");
+async function stopAgent() {
+  "use server";
+  // soft stop via provided script
+  await new Promise<void>((resolve) => {
+    const child = spawn("bash", ["-lc", `"${STOPPER}"`], { stdio: "ignore", shell: true });
+    child.on("exit", () => resolve());
+    child.on("error", () => resolve());
+  });
+  revalidatePath("/admin/web");
+}
 
+async function publishToVM() {
+  "use server";
+  // Build and restart systemd unit (passwordless sudo already set up)
+  await new Promise<void>((resolve) => {
+    const cmd = `
+      cd "${BASE}" && \
+      pnpm build && \
+      sudo /usr/bin/systemctl restart prestige-prep
+    `;
+    const child = spawn("bash", ["-lc", cmd], { stdio: "ignore", shell: true });
+    child.on("exit", () => resolve());
+    child.on("error", () => resolve());
+  });
+}
+
+async function commitAndPush(formData: FormData) {
+  "use server";
+  const branch = String(formData.get("branch") || "");
+  const msg = String(formData.get("message") || "web-agent: patch ...");
+  const branchName = branch || `agent-${new Date().toISOString().replace(/[-:T.Z]/g, "").slice(0, 14)}`;
   const cmd = `
-    MODEL='${model.replace(/'/g, "'\\''")}' \
-    ITERS='${iters}' \
-    TIMEOUT_SECS='${timeout}' \
-    GOALS_FILE='${goalsPath.replace(/'/g, "'\\''")}' \
-    APP_DIR='${process.cwd().replace(/'/g, "'\\''")}' \
-    bash .agent-web/run_webagent.sh
+    cd "${BASE}" && \
+    git checkout -B "${branchName}" && \
+    git add -A && \
+    git commit -m "${msg.replace(/"/g, '\\"')}" || true && \
+    git push -u origin "${branchName}" --force
   `;
-  await execFileP("bash", ["-lc", cmd], { cwd: process.cwd() });
+  await pexec("bash", ["-lc", cmd]);
 }
-
-async function stopAction() {
-  "use server";
-  const pid = await readPid();
-  if (!pid) return;
-  await execFileP("bash", ["-lc", `kill -TERM ${pid} || true`], { cwd: process.cwd() });
-}
-
-async function publishAction() {
-  "use server";
-  // Build, then restart the service so your VM shows the latest changes
-  await execFileP("bash", ["-lc", "pnpm build"], { cwd: process.cwd() });
-  await execFileP("bash", ["-lc", "sudo /usr/bin/systemctl restart prestige-prep"]);
-}
-
-async function pushAction(formData: FormData) {
-  "use server";
-  const branch = (formData.get("branch") as string)
-    || `agent-${new Date().toISOString().replace(/[-:T.Z]/g, "").slice(0,14)}`;
-  const msg = (formData.get("message") as string)
-    || `web-agent: patch ${new Date().toISOString()}`;
-
-  const cmd = [
-    `git add -A`,
-    // commit may no-op if nothing changed; don't fail build step
-    `git commit -m ${JSON.stringify(msg)} || true`,
-    `git push -u origin ${JSON.stringify(branch)}`
-  ].join(" && ");
-
-  await execFileP("bash", ["-lc", `git checkout -B ${JSON.stringify(branch)} && ${cmd}`], { cwd: process.cwd() });
-}
-
-/* ---------- PAGE ---------- */
 
 export default async function Page() {
   const pid = await readPid();
-  const logTail = await tailLog(80);
-  const br = await currentBranch();
-  const rj = await runJson();
+  const running = !!pid;
 
-  const defaultGoals = `Implement the following features, iterating with small, safe patches until \`pnpm build\` passes and basic flows work:
+  return (
+    <div className="mx-auto max-w-3xl p-6 space-y-6">
+      <h1 className="text-2xl font-semibold">Web Agent (Next.js)</h1>
+
+      <div className="rounded-xl border p-4 grid gap-3">
+        <div>PID: {running ? <span className="text-green-600">{pid} 🟢 running</span> : <span className="text-gray-500">— ⚪ stopped</span>}</div>
+        <div>Branch: <code>main</code></div>
+
+        <form action={startAgent} className="grid gap-3">
+          <div className="grid grid-cols-3 gap-3">
+            <label className="flex flex-col">
+              <span className="text-sm text-gray-600">Model</span>
+              <input name="model" defaultValue="gemini-2.5-pro" className="border rounded px-2 py-1"/>
+            </label>
+            <label className="flex flex-col">
+              <span className="text-sm text-gray-600">Iters</span>
+              <input name="iters" defaultValue="25" className="border rounded px-2 py-1"/>
+            </label>
+            <label className="flex flex-col">
+              <span className="text-sm text-gray-600">Timeout (s)</span>
+              <input name="timeout" defaultValue="9000" className="border rounded px-2 py-1"/>
+            </label>
+          </div>
+
+          <label className="flex flex-col">
+            <span className="text-sm text-gray-600">Goals</span>
+            <textarea
+              name="goals"
+              rows={10}
+              defaultValue={`Implement the following features, iterating with small, safe patches until \`pnpm build\` passes and basic flows work:
 
 1) Learning Methodologies Pages
    - Create a top page at /methods listing these methodologies with short descriptions:
@@ -127,91 +152,110 @@ export default async function Page() {
    - Gentle UI polish: spacing, headings, small quality-of-life improvements. Keep changes incremental.
 
 Guardrails:
-- Small diffs only; keep existing features stable. Use server actions over public API. Keep TypeScript strict. Ensure \`pnpm build\` stays green.`;
+- Small diffs only; keep existing features stable. Use server actions over public API. Keep TypeScript strict. Ensure \`pnpm build\` stays green.`}
+              className="border rounded px-2 py-1 font-mono text-sm"
+            />
+          </label>
+
+          <div className="flex gap-2">
+            <button className="rounded bg-black text-white px-3 py-1">Start</button>
+            <form action={stopAgent}>
+              <button className="rounded bg-gray-700 text-white px-3 py-1" formAction={stopAgent}>Stop</button>
+            </form>
+          </div>
+        </form>
+      </div>
+
+      <form action={publishToVM} className="rounded-xl border p-4 space-y-3">
+        <h2 className="font-medium">Publish latest changes to VM</h2>
+        <p className="text-sm text-gray-600">Runs <code>pnpm build</code> and then <code>systemctl restart prestige-prep</code>.</p>
+        <button className="rounded bg-indigo-600 text-white px-3 py-1">Publish to VM</button>
+      </form>
+
+      <form action={commitAndPush} className="rounded-xl border p-4 space-y-3">
+        <h2 className="font-medium">Commit & Push (create/overwrite branch)</h2>
+        <div className="grid grid-cols-2 gap-3">
+          <label className="flex flex-col">
+            <span className="text-sm text-gray-600">Branch</span>
+            <input name="branch" placeholder="agent-YYYYMMDDHHMMSS" className="border rounded px-2 py-1"/>
+          </label>
+          <label className="flex flex-col">
+            <span className="text-sm text-gray-600">Commit message</span>
+            <input name="message" defaultValue="web-agent: patch ..." className="border rounded px-2 py-1"/>
+          </label>
+        </div>
+        <button className="rounded bg-emerald-600 text-white px-3 py-1">Commit & Push</button>
+      </form>
+
+      {/* Live Log */}
+      <LiveLog />
+    </div>
+  );
+}
+
+/** -------- Client log viewer -------- */
+function humanElapsed(startIso?: string | null) {
+  if (!startIso) return "—";
+  const start = new Date(startIso).getTime();
+  const now = Date.now();
+  let ms = Math.max(0, now - start);
+  const hh = Math.floor(ms / 3600000); ms -= hh * 3600000;
+  const mm = Math.floor(ms / 60000); ms -= mm * 60000;
+  const ss = Math.floor(ms / 1000);
+  return `${hh.toString().padStart(2,"0")}:${mm.toString().padStart(2,"0")}:${ss.toString().padStart(2,"0")}`;
+}
+
+function timeFmt(iso?: string | null) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  return d.toISOString().replace("T"," ").replace("Z"," UTC");
+}
+
+function LiveLog() {
+  "use client";
+  const [lines, setLines] = require("react").useState<string[]>([]);
+  const [file, setFile] = require("react").useState<string | null>(null);
+  const [startedAt, setStartedAt] = require("react").useState<string | null>(null);
+  const [mtime, setMtime] = require("react").useState<string | null>(null);
+  const [tick, setTick] = require("react").useState(0);
+
+  // poll every 2s
+  require("react").useEffect(() => {
+    let alive = true;
+    const loop = async () => {
+      try {
+        const res = await fetch("/api/webagent/log?limit=700", { cache: "no-store" });
+        const data = await res.json();
+        if (alive && data?.ok) {
+          setLines(data.lines || []);
+          setFile(data.file || null);
+          setStartedAt(data.startedAt || null);
+          setMtime(data.mtime || null);
+        }
+      } catch {}
+      if (alive) setTimeout(loop, 2000);
+    };
+    loop();
+    return () => { alive = false; };
+  }, []);
+
+  // tick to re-render elapsed every second
+  require("react").useEffect(() => {
+    const t = setInterval(() => setTick((x: number) => x + 1), 1000);
+    return () => clearInterval(t);
+  }, []);
 
   return (
-    <main className="p-8 space-y-6">
-      <h1 className="text-2xl font-semibold">Web Agent (Next.js)</h1>
-      <div className="text-sm text-gray-600">
-        <div>PID: {pid ?? "—"} {pid ? "🟢 running" : "⚪ stopped"}</div>
-        <div>Branch: {br}</div>
-        {rj && (
-          <div className="mt-1">
-            <div>Model: {rj.model} Iterations: {rj.iters}</div>
-            <div>Started: {rj.startedAt}</div>
-            <div>Repo: {rj.repo}</div>
-          </div>
-        )}
+    <div className="rounded-xl border p-4 space-y-2">
+      <div className="flex flex-wrap items-center gap-4 text-sm text-gray-600">
+        <div><span className="text-gray-500">Log:</span> <code>{file ?? "—"}</code></div>
+        <div><span className="text-gray-500">Started:</span> {timeFmt(startedAt)}</div>
+        <div><span className="text-gray-500">Elapsed:</span> <code>{humanElapsed(startedAt)}</code></div>
+        <div><span className="text-gray-500">Updated:</span> {timeFmt(mtime)}</div>
       </div>
-
-      {/* Start/Stop agent */}
-      <form action={startAction} className="space-y-3 border rounded-lg p-4 bg-white shadow-sm">
-        <h2 className="font-medium">Start Web Agent</h2>
-
-        <label className="block">
-          <span className="text-sm font-medium">Model</span>
-          <input name="model" defaultValue="gemini-2.5-pro" className="mt-1 w-full border rounded p-2" />
-        </label>
-
-        <div className="grid grid-cols-2 gap-4">
-          <label className="block">
-            <span className="text-sm font-medium">Iters</span>
-            <input name="iters" type="number" min={1} defaultValue={25} className="mt-1 w-full border rounded p-2" />
-          </label>
-          <label className="block">
-            <span className="text-sm font-medium">Timeout (s)</span>
-            <input name="timeout" type="number" min={0} defaultValue={9000} className="mt-1 w-full border rounded p-2" />
-          </label>
-        </div>
-
-        <label className="block">
-          <span className="text-sm font-medium">Goals</span>
-          <textarea name="goals" rows={16} defaultValue={defaultGoals}
-            className="mt-1 w-full border rounded p-2 font-mono text-sm" />
-        </label>
-
-        <div className="flex gap-3">
-          <button type="submit" className="px-4 py-2 rounded bg-black text-white">Start</button>
-          <form action={stopAction}>
-            <button formAction={stopAction} className="px-4 py-2 rounded bg-red-600 text-white">Stop</button>
-          </form>
-        </div>
-      </form>
-
-      {/* Publish to VM */}
-      <form action={publishAction} className="space-y-2 border rounded-lg p-4 bg-white shadow-sm">
-        <h2 className="font-medium">Publish latest changes to VM</h2>
-        <p className="text-sm text-gray-600">
-          Runs <code>pnpm build</code> and then <code>systemctl restart prestige-prep</code>. After this, a normal browser refresh will show the updated app on your VM.
-        </p>
-        <button type="submit" className="px-4 py-2 rounded bg-emerald-600 text-white">Publish to VM</button>
-      </form>
-
-      {/* Commit & Push for Vercel previews */}
-      <form action={pushAction} className="space-y-2 border rounded-lg p-4 bg-white shadow-sm">
-        <h2 className="font-medium">Commit & Push (create/overwrite branch)</h2>
-        <div className="grid grid-cols-2 gap-4">
-          <label className="block">
-            <span className="text-sm font-medium">Branch</span>
-            <input name="branch" placeholder="agent-YYYYMMDDHHMMSS" className="mt-1 w-full border rounded p-2" />
-          </label>
-          <label className="block">
-            <span className="text-sm font-medium">Commit message</span>
-            <input name="message" placeholder="web-agent: patch ..." className="mt-1 w-full border rounded p-2" />
-          </label>
-        </div>
-        <p className="text-sm text-gray-600">
-          Push to GitHub to trigger a Vercel preview (after you connect the repo on Vercel).
-        </p>
-        <button type="submit" className="px-4 py-2 rounded bg-indigo-600 text-white">Commit & Push</button>
-      </form>
-
-      <div className="space-y-2">
-        <h3 className="font-medium">Web Agent Log (tail)</h3>
-        <pre className="p-3 bg-gray-900 text-gray-100 rounded overflow-auto text-xs leading-5 max-h-[50vh]">
-{await tailLog(80)}
-        </pre>
-      </div>
-    </main>
+      <pre className="border rounded p-3 text-xs overflow-auto max-h-[60vh] leading-5 bg-white">
+        {lines.length ? lines.join("\n") : "No logs yet."}
+      </pre>
+    </div>
   );
 }
