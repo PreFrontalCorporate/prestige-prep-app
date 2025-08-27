@@ -1,0 +1,19 @@
+[WEBAGENT] 2025-08-27T20:41:10+0000 Start model=gemini-2.5-pro iters=25 timeout=9000
+[WEBAGENT] repo=/home/donkey_right_productions/prestige-prep-app
+[WEBAGENT] Baseline build rc: 127
+/usr/bin/env: ‘node’: No such file or directory
+
+[WEBAGENT] Iteration 1: querying model…
+[WEBAGENT] apply_patch: False (error: corrupt patch at line 4
+
+----
+error: corrupt patch at line 4
+)
+[WEBAGENT] Patch failed to apply. Stopping.
+--- DIFF START ---
+--- /dev/null
++++ a/.npmrc
+@@ -0,0 +1 @@
++use-node-version=20.15.1
+--- DIFF END ---
+[WEBAGENT] DONE: FAILED

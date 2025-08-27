@@ -1,0 +1,25 @@
+Implement the following features, iterating with small, safe patches until `pnpm build` passes and basic flows work:
+
+1) Learning Methodologies Pages
+   - Create a top page at /methods listing these methodologies with short descriptions:
+     • Active Recall • Spaced Repetition • Interleaving • Deliberate Practice • Mastery Learning • Worked Examples • Fading (Scaffold Reduction) • Retrieval Practice (with confidence) • Timed Drills & Benchmarks • Error Logging & Reflection
+   - Each links to /methods/[slug] with a lightweight explainer and how the app supports it.
+
+2) Time & Score Tracking
+   - Track per-item attempts: sessionId (cookie), setId, itemId, section, tags, difficulty, chosen answer, correctness, elapsedMs, timestamp.
+   - Persist to Firestore via lib/firestore.ts in collection "attempts" -> doc(sessionId) -> subcollection "events".
+   - Add minimal server actions from /drills to record attempts (avoid public /api where possible).
+
+3) Fast Content Picker
+   - Add a quick picker on /drills (and/or /dashboard) to switch the current content set immediately using existing loader logic.
+
+4) Recommended Learning (from mistakes)
+   - Aggregate recent attempts (e.g., last 50) and rank weak areas by section/tag and difficulty.
+   - Add /recommended that shows top weak areas and links to focused drills (or at least presents suggested scopes).
+
+5) KaTeX & Polish
+   - Integrate KaTeX to render LaTeX in items/explanations (minimal deps).
+   - Gentle UI polish: spacing, headings, small quality-of-life improvements. Keep changes incremental.
+
+Guardrails:
+- Small diffs only; keep existing features stable. Use server actions over public API. Keep TypeScript strict. Ensure `pnpm build` stays green.

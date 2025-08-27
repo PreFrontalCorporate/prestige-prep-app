@@ -1,0 +1,13 @@
+{
+  "type": "service_account",
+  "project_id": "learning-470300",
+  "private_key_id": "6eeb8b22c41feb3fcf881e768315c191a5c5d65b",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvwIBADANBgkqhkiG9w0BAQEFAASCBKkwggSlAgEAAoIBAQDqXaC5nlKj6WZY\nVvYl8Q9OmTdaUrIgip3UpR9AMcNyYnuR2k9+2mtAe15dBc4JYO26N5S4Yo3xxXe9\nLUzajUfYsvgx8tmFKeJKCZzHlBpKD1UjZ5HDJbwfJRk40OOjJWzkRtV6SLMUVmlO\nJvmZISHUUM3IuB8j4UxrAKK5trrgsUA5Id0V0xoCp3mgQYxyJXBDxEGE+MAEHkvz\nzIVn8UiILTVjKTJgSt6EeWIcW2WGKaIUbLpOuvcKHxDXU5gy6dRcVFWlDoFTF/nJ\nvw51ELWNU6/XALPGsyzgc6WCYRgqD9Md1jIWqFyFZpDkvwEOSti/tAC+I/ABQF6H\nUEkGhxyfAgMBAAECggEAYNVKgSb/MiZPWRSlI0wUbP81NaaRXoynZaLL5LQq8unp\n8Hto+Rq50ayncnvhg1J/Jr+sPPrLdyeFr6414N8a3lgj4E9cvH5vtvN9yaBRtGPd\nY4F5Yk4HCj9DyovUYiYmdbMmpR3AkBib7eSAoFpmJdk1DUe15hdCgbuDgIQVdpw7\nVrNLc77e5FLILnx5On/RDhmngGQeSIOfswoVqusK9Fh79BuCpf/svBvoCTK568PI\n7xfk4Uug3BClNAfc419TUO8o3J/Iztzr/7Ld9Hf71lSnEATz5ABbOswngSFB3KJM\ntpQO2lya64mJsth/1SBUWsN39B7odE+7BbvKJkeFUQKBgQD7q03+IkyUSKaH70Dd\nDkZXt9el2e9zUAW7fMw2VY2dzwjHNJkiBvfU5WznGpxiv2eYaHTZ8DBOov2AWZOv\nrd5TFBiFK3tVzvJZdobUYy97OU9G9diTZ4C0SOzVPkKH7iKpelouAaIqLavidq3i\n2JFr+Y/esr1QrtcUwfEIToCC2wKBgQDuZhhf1u7aQSUJDNWTqUsCjpVoFfKabgDt\nR5TFPU32GP51qfuIHnUQzl7JgPkf3ycKHgP6YD0TUEG3K9j42EcFnoIF38SyQDsU\nPwlH3DzHdQH1FBh9d65dovjT9cGLPknWre73EbhqHvZJpRaYUs3Gcibn3hHGc13k\ninIuYIo+jQKBgQCnxEJxrxutneClrXBn7CQoRX2UKfvduvKXUVIwxkdpc6I+aWnL\nrSl42pgGV0745O+CQd/jiKIrSawD67Lv4c/bQgI2hA3r3dDgooqu+o+kbUfT3f9K\nBC1gAV0fqilfw/eHUvDaymv4AgobJVI1bnlCqVKm+jAJoQPv6nlrOCmjEQKBgQDc\nRNbWjpeobzKR9xrLUUtuNGHVhxneGC+hDVdnGqqS7SsHeqRec43Elnk8A3+rNBs1\nHOCeERe9ZZUiclAKNIMCrR8D4Go0LGap4Uho7hP2UqUZVZT/MHqaJ79y0IogZtAA\nnDrEa8oRu0Pibbe/zBo29jf+Ws/fpa6mQEkZkreI7QKBgQDQopfCsHqbVPDCqU51\ngixq/O4Bk/ErCapcxpwtiKii4uORlGtfDsckJ/02f5JJ4ao/w/eFiIJEckSuVH+E\nn7ezr5PNhthH+/h+ZCFTPPzjJxZ1XfuQuxToxPp/5fZqu/5BHgRlmPSDjfIjL5Xj\nU812KTbC5nnd8hzRvlEIgDPsHA==\n-----END PRIVATE KEY-----\n",
+  "client_email": "vercel-prestige@learning-470300.iam.gserviceaccount.com",
+  "client_id": "106159213047591229107",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/vercel-prestige%40learning-470300.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}
