@@ -1,4 +1,5 @@
 // lib/firestore.ts
+import "./gcp-auth";
 import { initializeApp, applicationDefault, getApps } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 
@@ -16,9 +17,9 @@ if (!PROJECT_ID) {
 if (!getApps().length) {
   initializeApp({
     projectId: PROJECT_ID,
-    credential: applicationDefault(), // GCE metadata / ADC
+    credential: applicationDefault(), // picked up from GOOGLE_APPLICATION_CREDENTIALS (set by lib/gcp-auth)
   });
 }
 
 export const db = getFirestore();
-
+db.settings({ ignoreUndefinedProperties: true });

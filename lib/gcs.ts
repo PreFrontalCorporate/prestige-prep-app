@@ -1,4 +1,5 @@
 // lib/gcs.ts
+import "./gcp-auth";
 import { Storage } from "@google-cloud/storage";
 
 const PROJECT_ID =
@@ -12,7 +13,7 @@ if (!BUCKET) {
   console.warn("[gcs] GCP_BUCKET not set");
 }
 
-export const storage = new Storage({ projectId: PROJECT_ID });
+export const storage = new Storage({ projectId: PROJECT_ID }); // ADC creds via lib/gcp-auth
 export const bucket = BUCKET ? storage.bucket(BUCKET) : null;
 
 export async function readTextFile(path: string): Promise<string> {
