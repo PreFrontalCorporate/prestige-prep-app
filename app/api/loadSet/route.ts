@@ -1,66 +1,117 @@
-// app/api/loadSet/route.ts
-import { NextResponse } from "next/server";
-import { db } from "@/lib/firestore";
+import { NextRequest, NextResponse } from "next/server";
 import { readTextFile } from "@/lib/gcs";
+import { db } from "@/lib/firestore";
 
-const CORS = {
-  "access-control-allow-origin": "*",
-  "access-control-allow-methods": "GET,POST,OPTIONS",
-  "access-control-allow-headers": "content-type",
-};
+export const dynamic = "force-dynamic";
 
-function ok(body: any, init: number = 200) {
-  return new NextResponse(JSON.stringify(body), {
-    status: init,
-    headers: { "content-type": "application/json", ...CORS },
-  });
-}
-function bad(msg: string, init: number = 400) {
-  return ok({ ok: false, error: msg }, init);
+function corsHeaders(h?: HeadersInit) {
+  return {
+    "access-control-allow-origin": "*",
+    "access-control-allow-methods": "GET,POST,OPTIONS",
+    "access-control-allow-headers": "content-type",
+    ...(h || {}),
+  };
 }
 
-export async function OPTIONS() {
-  return new NextResponse(null, { status: 204, headers: CORS });
+export function OPTIONS() {
+  return new NextResponse(null, { headers: corsHeaders() });
 }
 
-async function doLoad(setName: string) {
-  // verify the set exists by fetching its index.json from GCS
-  const path = `sets/${setName}/index.json`;
-  const raw = await readTextFile(path);
-  const meta = JSON.parse(raw) as { name?: string; exam?: string; count?: number };
-
-  // persist “current set” to Firestore
-  await db.collection("meta").doc("current").set(
-    {
-      set: setName,
-      updatedAt: Date.now(), // serverTimestamp not necessary for simple admin
-    },
-    { merge: true }
+function fromUrl(req: NextRequest): string | null {
+  const u = new URL(req.url);
+  return (
+    u.searchParams.get("set") ||
+    u.searchParams.get("setName") ||
+    u.searchParams.get("name")
   );
-
-  return { ok: true, set: setName, meta, path };
 }
 
-export async function GET(req: Request) {
+async function fromBody(req: NextRequest): Promise<string | null> {
+  const ct = (req.headers.get("content-type") || "").toLowerCase();
   try {
-    const url = new URL(req.url);
-    const set = url.searchParams.get("set");
-    if (!set) return bad("Missing ?set=");
-    const result = await doLoad(set);
-    return ok(result);
-  } catch (e: any) {
-    return bad(e?.message || "failed", 500);
+    if (ct.includes("application/json")) {
+      const body = await req.json();
+      return body.set || body.setName || body.name || null;
+    }
+    if (
+      ct.includes("application/x-www-form-urlencoded") ||
+      ct.includes("multipart/form-data")
+    ) {
+      const form = await req.formData();
+      return (
+        (form.get("set") ||
+          form.get("setName") ||
+          form.get("name")) as string | null
+      );
+    }
+    // treat raw text body as the set name
+    const text = (await req.text()).trim();
+    if (text && !text.startsWith("{") && !text.includes("=")) return text;
+  } catch {
+    // ignore parsing errors — we'll fall through
+  }
+  return null;
+}
+
+function fromReferer(req: NextRequest): string | null {
+  const ref = req.headers.get("referer");
+  if (!ref) return null;
+  try {
+    const u = new URL(ref);
+    return (
+      u.searchParams.get("set") ||
+      u.searchParams.get("setName") ||
+      u.searchParams.get("name")
+    );
+  } catch {
+    return null;
   }
 }
 
-export async function POST(req: Request) {
+async function resolveSetName(req: NextRequest): Promise<string | null> {
+  return fromUrl(req) || (await fromBody(req)) || fromReferer(req);
+}
+
+function ok(data: any, init: any = {}) {
+  return NextResponse.json(
+    { ok: true, ...data },
+    { ...init, headers: corsHeaders(init?.headers) }
+  );
+}
+function bad(message: string, init: any = {}) {
+  return NextResponse.json(
+    { ok: false, error: message },
+    { status: 400, ...init, headers: corsHeaders(init?.headers) }
+  );
+}
+
+export async function GET(req: NextRequest) {
+  return handle(req);
+}
+export async function POST(req: NextRequest) {
+  return handle(req);
+}
+
+async function handle(req: NextRequest) {
+  const set = (await resolveSetName(req))?.trim();
+  if (!set) return bad("Missing set / setName");
+
   try {
-    const body = (await req.json().catch(() => ({}))) as any;
-    const set = body.set || body.setName || new URL(req.url).searchParams.get("set");
-    if (!set) return bad("Missing set / setName");
-    const result = await doLoad(set);
-    return ok(result);
-  } catch (e: any) {
-    return bad(e?.message || "failed", 500);
+    const path = `sets/${set}/index.json`;
+    const json = await readTextFile(path);
+    const meta = JSON.parse(json);
+
+    // Persist "current set" to Firestore
+    await db
+      .collection("meta")
+      .doc("currentSet")
+      .set({ set, updatedAt: new Date() }, { merge: true });
+
+    return ok({ set, meta, path });
+  } catch (err: any) {
+    return NextResponse.json(
+      { ok: false, error: String(err?.message || err) },
+      { status: 500, headers: corsHeaders() }
+    );
   }
 }
