@@ -46,20 +46,19 @@ export const storage = new Storage(
 
 export const bucket = storage.bucket(bucketName);
 
+/** Core helpers */
 export async function readText(path: string): Promise<string> {
   const [buf] = await bucket.file(path).download();
   return buf.toString("utf8");
 }
 
 export async function readJson<T = any>(path: string): Promise<T> {
-  const txt = await readText(path);
-  return JSON.parse(txt) as T;
+  return JSON.parse(await readText(path)) as T;
 }
 
 export async function writeJson(path: string, data: any): Promise<void> {
   const file = bucket.file(path);
-  const body = JSON.stringify(data);
-  await file.save(body, {
+  await file.save(JSON.stringify(data), {
     contentType: "application/json",
     resumable: false,
     validation: "crc32c",
@@ -81,4 +80,24 @@ export async function listPaths(prefix: string, suffix?: string): Promise<string
   return files
     .map((f) => f.name)
     .filter((p) => (!suffix ? true : p.endsWith(suffix)));
+}
+
+/** Back-compat shims for existing routes */
+
+// Old name used by items/loadSet routes
+export async function readTextFile(path: string): Promise<string> {
+  return readText(path);
+}
+
+// Old helper used by contentSets/diag to enumerate set index files
+export async function listIndexJsonUnderSets(): Promise<
+  { name: string; path: string }[]
+> {
+  const paths = await listPaths("sets/", "index.json");
+  const out: { name: string; path: string }[] = [];
+  for (const p of paths) {
+    const m = p.match(/^sets\/([^/]+)\/index\.json$/);
+    if (m) out.push({ name: m[1], path: p });
+  }
+  return out;
 }
