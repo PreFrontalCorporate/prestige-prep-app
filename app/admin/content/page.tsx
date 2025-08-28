@@ -1,185 +1,172 @@
-// app/admin/content/page.tsx
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
 
-type ContentSetWire = {
-  id?: string;          // what /api/contentSets returns today
-  name?: string;        // future friendly
-  gcsPath?: string | null;
-  count?: number | null;
-  exam?: string | null;
-  createdAt?: string;
+type SetRow = {
+  id: string;         // setName, e.g. "sat-smoke-YYYYMMDD-HHMMSS"
+  exam: string;       // "SAT", etc.
+  createdAt?: string; // ISO timestamp (optional)
+  count?: number;     // hydrated client-side
 };
 
-type Row = {
-  id: string;
-  name?: string;
-  gcsPath?: string | null;
-  count?: number | null;
-  exam?: string | null;
-  createdAt?: string;
-};
+type SetsApi = { sets: Array<{ id: string; exam: string; createdAt?: string }> };
+type CountApi = { set: string; count: number };
 
 export default function ContentAdminPage() {
-  const [rows, setRows] = useState<Row[] | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [msg, setMsg] = useState<string | null>(null);
-  const [currentSet, setCurrentSet] = useState<{ set?: string; count?: number } | null>(null);
+  const [sets, setSets] = useState<SetRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [busySet, setBusySet] = useState<string | null>(null);
+  const [flash, setFlash] = useState<string | null>(null); // success/error banner
+  const [currentSet, setCurrentSet] = useState<{ id?: string; count?: number }>({});
 
-  const prettyRows = useMemo(() => rows ?? [], [rows]);
-
-  async function loadSets() {
-    try {
-      setMsg(null);
-      // 1) list sets
-      const res = await fetch('/api/contentSets', { cache: 'no-store' });
-      if (!res.ok) throw new Error(await res.text());
-      const data = await res.json();
-      const wire: ContentSetWire[] = Array.isArray(data) ? data : data.sets || [];
-
-      const mapped: Row[] = wire.map((s) => ({
-        id: s.id || s.name || 'unknown',
-        name: s.name,
-        gcsPath: s.gcsPath ?? null,
-        count: s.count ?? null,
-        exam: s.exam ?? null,
-        createdAt: s.createdAt,
-      }));
-
-      setRows(mapped);
-
-      // 2) load current set
+  // Load sets + current set on mount
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
       try {
-        const cs = await fetch('/api/currentSet', { cache: 'no-store' });
-        if (cs.ok) {
-          const csJson = await cs.json();
-          setCurrentSet({ set: csJson?.set, count: csJson?.count });
-        }
-      } catch {}
+        setLoading(true);
 
-      // 3) hydrate counts per set (best-effort)
-      // Try /api/items?limit=0&set=<id> for each; if it fails, skip.
-      const withCounts = await Promise.all(
-        mapped.map(async (r) => {
-          try {
-            const q = new URLSearchParams({ limit: '0', set: r.id }).toString();
-            const rItems = await fetch(`/api/items?${q}`, { cache: 'no-store' });
-            if (rItems.ok) {
-              const j = await rItems.json();
-              return { ...r, count: typeof j?.count === 'number' ? j.count : r.count ?? null };
-            }
-          } catch {}
-          return r;
-        })
-      );
+        // 1) List sets
+        const res = await fetch('/api/contentSets', { cache: 'no-store' });
+        if (!res.ok) throw new Error(`GET /api/contentSets → ${res.status}`);
+        const body: SetsApi = await res.json();
 
-      setRows(withCounts);
-    } catch (e: any) {
-      setMsg(`Failed to load content sets: ${e?.message ?? e}`);
-      setRows([]);
-    }
-  }
+        // 2) Seed table
+        let table: SetRow[] = body.sets.map(s => ({ id: s.id, exam: s.exam, createdAt: s.createdAt }));
 
-  async function importSet(idOrName: string) {
+        // 3) Hydrate counts (parallel)
+        table = await Promise.all(
+          table.map(async (row) => {
+            try {
+              const rc = await fetch(`/api/items?limit=0&set=${encodeURIComponent(row.id)}`, { cache: 'no-store' });
+              if (rc.ok) {
+                const j: CountApi = await rc.json();
+                return { ...row, count: j.count };
+              }
+            } catch {}
+            return row;
+          })
+        );
+
+        if (cancelled) return;
+        setSets(table);
+
+        // 4) Current set
+        try {
+          const cur = await fetch('/api/currentSet', { cache: 'no-store' });
+          if (cur.ok) {
+            const j = await cur.json(); // { set: string, count?: number }
+            if (!cancelled) setCurrentSet({ id: j.set, count: j.count });
+          }
+        } catch {}
+      } catch (err: any) {
+        if (!cancelled) setFlash(`Failed to load sets: ${err?.message ?? String(err)}`);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  const currentText = useMemo(() => {
+    const id = currentSet.id ?? '—';
+    const c  = typeof currentSet.count === 'number' ? currentSet.count : 0;
+    return `Current set: ${id} · ${c} items`;
+  }, [currentSet]);
+
+  async function handleImport(setName: string) {
+    setFlash(null);
+    setBusySet(setName);
     try {
-      setLoading(true);
-      setMsg(`Importing "${idOrName}"...`);
       const res = await fetch('/api/loadSet', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ setName: idOrName }),
+        body: JSON.stringify({ setName }),
+        cache: 'no-store',
       });
+
       if (!res.ok) {
-        const txt = await res.text();
-        throw new Error(txt || `HTTP ${res.status}`);
+        let text = '';
+        try { text = await res.text(); } catch {}
+        throw new Error(`HTTP ${res.status}${text ? ` – ${text}` : ''}`);
       }
-      setMsg(`Imported "${idOrName}". You can now run drills.`);
-      await loadSets();
-    } catch (e: any) {
-      setMsg(`Import failed: ${e?.message ?? e}`);
+
+      // Reload the current set display + rehydrate counts after a successful import
+      try {
+        const cur = await fetch('/api/currentSet', { cache: 'no-store' });
+        if (cur.ok) {
+          const j = await cur.json();
+          setCurrentSet({ id: j.set, count: j.count });
+        }
+      } catch {}
+
+      setFlash(`Imported ${setName} successfully.`);
+    } catch (err: any) {
+      setFlash(`Import failed: ${err?.message ?? String(err)}`);
     } finally {
-      setLoading(false);
+      setBusySet(null);
     }
   }
 
-  useEffect(() => {
-    loadSets();
-  }, []);
-
   return (
-    <div className="pb-12">
-      <h1 className="text-3xl font-bold tracking-tight">Content Admin</h1>
+    <div className="container mx-auto px-4">
+      <h1 className="mt-8 md:mt-12 text-3xl font-bold tracking-tight">Content Admin</h1>
       <p className="mt-2 text-slate-600">Import generated sets into the app.</p>
 
-      {currentSet?.set && (
-        <div className="mt-4 text-sm rounded-lg border p-3 bg-slate-50 border-slate-200 text-slate-800">
-          <b>Current set:</b> {currentSet.set}
-          {typeof currentSet.count === 'number' ? ` · ${currentSet.count} items` : ''}
+      <div className="mt-4 rounded-lg border bg-slate-50 px-4 py-3 text-sm text-slate-700">
+        {currentText}
+      </div>
+
+      {flash && (
+        <div className="mt-4 rounded-lg border border-yellow-200 bg-yellow-50 px-4 py-3 text-sm text-yellow-800">
+          {flash}
         </div>
       )}
 
-      {msg && (
-        <div className="mt-4 text-sm rounded-lg border p-3 bg-yellow-50 border-yellow-200 text-yellow-900">
-          {msg}
-        </div>
-      )}
-
-      <div className="mt-6 overflow-x-auto rounded-2xl bg-white shadow ring-1 ring-slate-100">
-        <table className="min-w-full text-sm">
-          <thead className="bg-slate-50 text-slate-600">
+      <div className="mt-6 overflow-hidden rounded-xl border bg-white shadow-sm">
+        <table className="min-w-full">
+          <thead className="bg-slate-50 text-left text-sm font-semibold text-slate-600">
             <tr>
-              <th className="px-4 py-2 text-left font-medium">Set</th>
-              <th className="px-4 py-2 text-left font-medium">GCS Path</th>
-              <th className="px-4 py-2 text-left font-medium">Count</th>
-              <th className="px-4 py-2 text-left font-medium">Exam</th>
-              <th className="px-4 py-2 text-left font-medium">Actions</th>
+              <th className="px-4 py-3">Set</th>
+              <th className="px-4 py-3">GCS Path</th>
+              <th className="px-4 py-3">Count</th>
+              <th className="px-4 py-3">Exam</th>
+              <th className="px-4 py-3">Actions</th>
             </tr>
           </thead>
-          <tbody>
-            {prettyRows.length === 0 && (
-              <tr>
-                <td className="px-4 py-6 text-slate-500" colSpan={5}>
-                  No sets found.
-                </td>
-              </tr>
+          <tbody className="divide-y text-sm">
+            {loading && (
+              <tr><td className="px-4 py-5 text-slate-500" colSpan={5}>Loading…</td></tr>
             )}
 
-            {prettyRows.map((r) => {
-              const displayName = r.name ?? r.id;
-              return (
-                <tr key={r.id} className="border-t">
-                  <td className="px-4 py-3 font-medium text-slate-900">
-                    {displayName}
-                  </td>
-                  <td className="px-4 py-3 text-slate-700">{r.gcsPath ?? '—'}</td>
-                  <td className="px-4 py-3 text-slate-700">
-                    {typeof r.count === 'number' ? r.count : '—'}
-                  </td>
-                  <td className="px-4 py-3 text-slate-700">{r.exam ?? '—'}</td>
-                  <td className="px-4 py-3">
-                    <button
-                      onClick={() => importSet(r.id)}
-                      disabled={loading}
-                      className="px-3 py-1.5 rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
-                      aria-label={`Import ${displayName}`}
-                    >
-                      {loading ? 'Working…' : 'Import'}
-                    </button>
-                  </td>
-                </tr>
-              );
-            })}
+            {!loading && sets.length === 0 && (
+              <tr><td className="px-4 py-5 text-slate-500" colSpan={5}>No sets found.</td></tr>
+            )}
+
+            {sets.map((s) => (
+              <tr key={s.id} className="hover:bg-slate-50/50">
+                <td className="px-4 py-4 font-mono text-[13px]">{s.id}</td>
+                <td className="px-4 py-4 text-slate-400">—</td>
+                <td className="px-4 py-4">{typeof s.count === 'number' ? s.count : '—'}</td>
+                <td className="px-4 py-4">{s.exam}</td>
+                <td className="px-4 py-4">
+                  <button
+                    onClick={() => handleImport(s.id)}
+                    disabled={!!busySet}
+                    className="rounded-md bg-blue-600 px-3 py-1.5 text-white shadow hover:bg-blue-700 disabled:opacity-60"
+                  >
+                    {busySet === s.id ? 'Importing…' : 'Import'}
+                  </button>
+                </td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>
 
-      <div className="mt-6">
-        <Link className="text-blue-600 hover:underline" href="/drills">
-          Go to Drills →
-        </Link>
-      </div>
+      <p className="mt-6">
+        <a className="text-blue-600 hover:underline" href="/drills">Go to Drills →</a>
+      </p>
     </div>
   );
 }

@@ -54,10 +54,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           </div>
         </header>
 
-        {/* Page content (unified top spacing here) */}
-        <main className="container mx-auto px-4 pt-8 md:pt-12">
-          {children}
-        </main>
+        {/* Page content */}
+        {children}
 
         {/* Footer */}
         <footer className="mt-16 border-t bg-white">
@@ -77,11 +75,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           </div>
         </footer>
 
-        {/* Observability */}
+        {/* Vercel analytics + performance */}
         <Analytics />
         <SpeedInsights />
       </body>
     </html>
   );
 }
-
