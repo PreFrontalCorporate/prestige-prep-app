@@ -1,45 +1,72 @@
-// app/api/items/route.ts
-import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
+import { NextRequest, NextResponse } from "next/server";
 import { readTextFile } from "@/lib/gcs";
 import { db } from "@/lib/firestore";
 
 export const dynamic = "force-dynamic";
 
-async function getSetFromRuntime(): Promise<string | null> {
+function corsHeaders(h?: HeadersInit) {
+  return {
+    "access-control-allow-origin": "*",
+    "access-control-allow-methods": "GET,OPTIONS",
+    "access-control-allow-headers": "content-type",
+    ...(h || {}),
+  };
+}
+
+export function OPTIONS() {
+  return new NextResponse(null, { headers: corsHeaders() });
+}
+
+export async function GET(req: NextRequest) {
   try {
-    const doc = await db.collection("runtime").doc("currentSet").get();
-    return doc.exists ? (doc.data()?.id as string) : null;
-  } catch {
-    return null;
+    const url = new URL(req.url);
+    let set =
+      url.searchParams.get("set") ||
+      url.searchParams.get("setName") ||
+      url.searchParams.get("name");
+
+    // Fallback to Firestore currentSet if not provided
+    if (!set) {
+      const snap = await db.collection("meta").doc("currentSet").get();
+      set = (snap.exists ? (snap.get("set") as string) : null) || undefined;
+    }
+
+    if (!set) {
+      return NextResponse.json(
+        { ok: false, error: "No set specified and no currentSet is set." },
+        { status: 400, headers: corsHeaders() }
+      );
+    }
+
+    const limit = Math.max(
+      0,
+      Math.min(
+        1000,
+        parseInt(url.searchParams.get("limit") || "0", 10) || 0
+      )
+    );
+    const offset = Math.max(
+      0,
+      parseInt(url.searchParams.get("offset") || "0", 10) || 0
+    );
+
+    // Load items from GCS
+    const path = `sets/${set}/items.json`;
+    const json = await readTextFile(path);
+    const allItems = JSON.parse(json) as any[];
+
+    const slice =
+      limit > 0 ? allItems.slice(offset, offset + limit) : allItems.slice(offset);
+
+    return NextResponse.json(
+      { set, count: allItems.length, items: slice },
+      { headers: corsHeaders() }
+    );
+  } catch (err: any) {
+    return NextResponse.json(
+      { ok: false, error: String(err?.message || err) },
+      { status: 500, headers: corsHeaders() }
+    );
   }
 }
 
-export async function GET(req: Request) {
-  const { searchParams } = new URL(req.url);
-  const limitRaw = searchParams.get("limit") ?? "";
-  const limit = Math.max(0, Math.min(Number(limitRaw || "0"), 1000));
-
-  const setFromQuery = searchParams.get("set");
-  const setFromCookie = cookies().get("pp-set")?.value;
-  const set = setFromQuery || setFromCookie || (await getSetFromRuntime());
-
-  if (!set) {
-    return NextResponse.json({ set: null, count: 0, items: [] });
-  }
-
-  try {
-    const text = await readTextFile(`content/sets/${set}/items.jsonl`);
-    const lines = text.split(/\r?\n/).filter(Boolean);
-    const parsed = lines.map((l) => JSON.parse(l));
-    const items = limit ? parsed.slice(0, limit) : parsed;
-    return NextResponse.json({ set, count: parsed.length, items });
-  } catch (e: any) {
-    return NextResponse.json({
-      set,
-      count: 0,
-      items: [],
-      error: String(e?.message || e),
-    });
-  }
-}
