@@ -1,65 +1,54 @@
 // app/api/webagent/log/route.ts
-import { NextResponse } from "next/server";
-import fs from "node:fs/promises";
-import fssync from "node:fs";
-import path from "node:path";
+import { NextRequest, NextResponse } from "next/server";
+import { db } from "@/lib/firestore";
 
-export const dynamic = "force-dynamic";
-
-const BASE = "/home/donkey_right_productions/prestige-prep-app";
-const REPORTS = path.join(BASE, ".agent-web", "reports");
-
-async function newest(): Promise<string | null> {
-  try {
-    const entries = await fs.readdir(REPORTS);
-    if (!entries.length) return null;
-    const stats = await Promise.all(
-      entries.map(async (name) => {
-        const p = path.join(REPORTS, name);
-        const st = await fs.stat(p);
-        return { p, m: st.mtimeMs };
-      })
-    );
-    stats.sort((a, b) => b.m - a.m);
-    return stats[0]?.p ?? null;
-  } catch {
-    return null;
+function cors(headers: Headers) {
+  headers.set("access-control-allow-origin", "*");
+  headers.set("access-control-allow-headers", "content-type, authorization");
+  headers.set("access-control-allow-methods", "POST,OPTIONS");
+}
+function assertAgent(req: NextRequest): NextResponse | null {
+  const want = process.env.AGENT_TOKEN;
+  if (!want) return null;
+  const got = req.headers.get("authorization") ?? "";
+  const m = got.match(/^Bearer\s+(.+)$/i);
+  if (!m || m[1] !== want) {
+    const res = NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+    cors(res.headers);
+    return res;
   }
+  return null;
 }
 
-export async function GET(req: Request) {
-  const { searchParams } = new URL(req.url);
-  const file = searchParams.get("file");
-  const n = Math.max(1, Math.min(2000, Number(searchParams.get("n") || "300")));
+export async function OPTIONS() {
+  const res = new NextResponse(null, { status: 204 });
+  cors(res.headers);
+  return res;
+}
 
-  let target = file || (await newest());
+export async function POST(req: NextRequest) {
+  const unauthorized = assertAgent(req);
+  if (unauthorized) return unauthorized;
 
-  if (!target || !fssync.existsSync(target)) {
-    return NextResponse.json({ file: null, lines: [] });
-  }
-
-  let text = "";
+  let body: any = {};
   try {
-    text = await fs.readFile(target, "utf8");
-  } catch {
-    // file may be rotating
-    return NextResponse.json({ file: target, lines: [] });
+    body = await req.json();
+  } catch {}
+
+  const entry = {
+    ts: Date.now(),
+    level: body?.level || "info",
+    message: body?.message || "",
+    meta: body?.meta || {},
+  };
+
+  try {
+    await db.collection("agentLogs").add(entry);
+  } catch (e) {
+    console.log("[agent log]", entry);
   }
 
-  const raw = text.replace(/\r\n/g, "\n").split("\n");
-  const lines = raw.slice(Math.max(0, raw.length - n));
-
-  // try to parse start time from first "Start" line
-  const startLine = raw.find((l) => l.includes("Start"));
-  let startedAt: string | null = null;
-  const m = startLine?.match(/\[(WEBAGENT|AGENT)\]\s+(\d{4}-\d{2}-\d{2}T[^\s]+)/);
-  if (m) startedAt = m[2];
-
-  const st = await fs.stat(target);
-  return NextResponse.json({
-    file: target,
-    mtime: st.mtime.toISOString(),
-    startedAt,
-    lines,
-  });
+  const res = NextResponse.json({ ok: true });
+  cors(res.headers);
+  return res;
 }

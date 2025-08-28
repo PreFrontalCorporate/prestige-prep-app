@@ -1,84 +1,82 @@
 // app/api/buildSet/route.ts
-import { NextResponse } from "next/server";
-import { bucket, copyObject, exists, readTextFile, writeJsonFile } from "@/lib/gcs";
+import { NextRequest, NextResponse } from "next/server";
+import { copyObject, exists, readJson, writeJson } from "@/lib/gcs";
 import { db } from "@/lib/firestore";
 
-const CORS = {
-  "access-control-allow-origin": "*",
-  "access-control-allow-headers": "content-type",
-  "access-control-allow-methods": "GET,POST,OPTIONS",
-};
-
-export function OPTIONS() {
-  return new NextResponse(null, { headers: CORS });
+function cors(headers: Headers) {
+  headers.set("access-control-allow-origin", "*");
+  headers.set("access-control-allow-headers", "content-type, authorization");
+  headers.set("access-control-allow-methods", "POST,OPTIONS");
+}
+function assertAgent(req: NextRequest): NextResponse | null {
+  const want = process.env.AGENT_TOKEN;
+  if (!want) return null;
+  const got = req.headers.get("authorization") ?? "";
+  const m = got.match(/^Bearer\s+(.+)$/i);
+  if (!m || m[1] !== want) {
+    const res = NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+    cors(res.headers);
+    return res;
+  }
+  return null;
 }
 
-function ok(data: any = {}) {
-  return NextResponse.json({ ok: true, ...data }, { headers: CORS });
-}
-function bad(msg: string, code = 400) {
-  return NextResponse.json({ ok: false, error: msg }, { status: code, headers: CORS });
+export async function OPTIONS() {
+  const res = new NextResponse(null, { status: 204 });
+  cors(res.headers);
+  return res;
 }
 
-async function build(setName: string) {
+export async function POST(req: NextRequest) {
+  const unauthorized = assertAgent(req);
+  if (unauthorized) return unauthorized;
+
+  let body: any = {};
+  try {
+    body = await req.json();
+  } catch {}
+
+  const setName = body?.setName || body?.set;
+  if (!setName) {
+    const res = NextResponse.json({ ok: false, error: "Missing setName/set" }, { status: 400 });
+    cors(res.headers);
+    return res;
+  }
+
   const dItems = `drafts/${setName}/items.json`;
   const dIndex = `drafts/${setName}/index.json`;
+  if (!(await exists(dItems))) {
+    const res = NextResponse.json({ ok: false, error: `Missing draft: ${dItems}` }, { status: 404 });
+    cors(res.headers);
+    return res;
+  }
+
+  // Ensure index has an accurate count
+  let indexMeta: any = { name: setName, exam: "SAT", count: 0 };
+  if (await exists(dIndex)) {
+    indexMeta = await readJson(dIndex);
+  }
+  try {
+    const items: any[] = await readJson(dItems);
+    indexMeta.count = items.length;
+  } catch {}
+
   const sItems = `sets/${setName}/items.json`;
   const sIndex = `sets/${setName}/index.json`;
 
-  // must have draft items
-  if (!(await exists(dItems))) throw new Error(`Missing draft items: ${dItems}`);
-
-  // copy items → sets
+  // Promote
   await copyObject(dItems, sItems);
+  await writeJson(sIndex, indexMeta);
 
-  // index: copy if present, else synthesize from items
-  if (await exists(dIndex)) {
-    await copyObject(dIndex, sIndex);
-  } else {
-    const items = JSON.parse(await readTextFile(dItems));
-    const exam = (items?.[0]?.exam as string) || "SAT";
-    const index = { name: setName, exam, count: Array.isArray(items) ? items.length : 0 };
-    await writeJsonFile(sIndex, index);
-  }
+  // Persist "current set"
+  await db.collection("meta").doc("currentSet").set({ set: setName, at: Date.now() }, { merge: true });
 
-  // persist current set in Firestore
-  await db.collection("meta").doc("currentSet").set(
-    { set: setName, updatedAt: Date.now() },
-    { merge: true }
-  );
-
-  // quick sanity (head to avoid full download)
-  const [meta] = await bucket.file(sIndex).getMetadata();
-  return { set: setName, paths: { sItems, sIndex }, contentType: meta.contentType };
-}
-
-export async function GET(req: Request) {
-  const { searchParams } = new URL(req.url);
-  const setName = searchParams.get("set") || searchParams.get("setName");
-  if (!setName) return bad("Missing set / setName");
-  try {
-    const result = await build(setName);
-    return ok(result);
-  } catch (e: any) {
-    return bad(String(e?.message || e), 500);
-  }
-}
-
-export async function POST(req: Request) {
-  try {
-    const ct = req.headers.get("content-type") || "";
-    let body: any = {};
-    if (ct.includes("application/json")) body = await req.json();
-    else if (ct.includes("application/x-www-form-urlencoded")) {
-      const form = await req.formData();
-      body = Object.fromEntries(form as any);
-    }
-    const setName = body.set || body.setName || body.name;
-    if (!setName) return bad("Missing set / setName");
-    const result = await build(setName);
-    return ok(result);
-  } catch (e: any) {
-    return bad(String(e?.message || e), 500);
-  }
+  const res = NextResponse.json({
+    ok: true,
+    set: setName,
+    paths: { sItems, sIndex },
+    contentType: "application/json",
+  });
+  cors(res.headers);
+  return res;
 }

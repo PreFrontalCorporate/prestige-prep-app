@@ -1,51 +1,71 @@
 // app/api/webagent/pushItems/route.ts
-import { NextResponse } from "next/server";
-import { writeJsonFile } from "@/lib/gcs";
+import { NextRequest, NextResponse } from "next/server";
+import { writeJson } from "@/lib/gcs";
 
-const CORS = {
-  "access-control-allow-origin": "*",
-  "access-control-allow-headers": "content-type",
-  "access-control-allow-methods": "POST,OPTIONS",
-};
-
-export function OPTIONS() {
-  return new NextResponse(null, { headers: CORS });
+function cors(headers: Headers) {
+  headers.set("access-control-allow-origin", "*");
+  headers.set("access-control-allow-headers", "content-type, authorization");
+  headers.set("access-control-allow-methods", "POST,OPTIONS");
+}
+function assertAgent(req: NextRequest): NextResponse | null {
+  const want = process.env.AGENT_TOKEN;
+  if (!want) return null;
+  const got = req.headers.get("authorization") ?? "";
+  const m = got.match(/^Bearer\s+(.+)$/i);
+  if (!m || m[1] !== want) {
+    const res = NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+    cors(res.headers);
+    return res;
+  }
+  return null;
 }
 
-export async function POST(req: Request) {
+export async function OPTIONS() {
+  const res = new NextResponse(null, { status: 204 });
+  cors(res.headers);
+  return res;
+}
+
+export async function POST(req: NextRequest) {
+  const unauthorized = assertAgent(req);
+  if (unauthorized) return unauthorized;
+
+  let body: any;
   try {
-    const ct = req.headers.get("content-type") || "";
-    let body: any = {};
-    if (ct.includes("application/json")) body = await req.json();
-    else if (ct.includes("application/x-www-form-urlencoded")) {
-      const form = await req.formData();
-      body = Object.fromEntries(form as any);
-    }
-
-    const setName: string | undefined = body.setName || body.set || body.name;
-    const items: any[] | undefined = body.items;
-
-    if (!setName) {
-      return NextResponse.json({ ok: false, error: "Missing setName" }, { status: 400, headers: CORS });
-    }
-    if (!Array.isArray(items) || items.length === 0) {
-      return NextResponse.json({ ok: false, error: "items[] required" }, { status: 400, headers: CORS });
-    }
-
-    const exam: string = body.index?.exam || items[0]?.exam || "SAT";
-    const index = { name: setName, exam, count: items.length };
-
-    const draftItems = `drafts/${setName}/items.json`;
-    const draftIndex = `drafts/${setName}/index.json`;
-
-    await writeJsonFile(draftItems, items);
-    await writeJsonFile(draftIndex, index);
-
-    return NextResponse.json(
-      { ok: true, draft: { items: draftItems, index: draftIndex }, index },
-      { headers: CORS }
-    );
-  } catch (err: any) {
-    return NextResponse.json({ ok: false, error: String(err?.message || err) }, { status: 500, headers: CORS });
+    body = await req.json();
+  } catch {
+    const res = NextResponse.json({ ok: false, error: "Invalid JSON body" }, { status: 400 });
+    cors(res.headers);
+    return res;
   }
+
+  const setName = body?.setName || body?.set;
+  const items = body?.items;
+  if (!setName || !Array.isArray(items)) {
+    const res = NextResponse.json(
+      { ok: false, error: "Missing setName and/or items[]" },
+      { status: 400 }
+    );
+    cors(res.headers);
+    return res;
+  }
+
+  const base = `drafts/${setName}`;
+  const itemsPath = `${base}/items.json`;
+  const indexPath = `${base}/index.json`;
+
+  // Minimal index metadata
+  const count = items.length;
+  const exam = items[0]?.exam || "SAT";
+
+  await writeJson(itemsPath, items);
+  await writeJson(indexPath, { name: setName, exam, count });
+
+  const res = NextResponse.json({
+    ok: true,
+    draft: { items: itemsPath, index: indexPath },
+    index: { name: setName, exam, count },
+  });
+  cors(res.headers);
+  return res;
 }
