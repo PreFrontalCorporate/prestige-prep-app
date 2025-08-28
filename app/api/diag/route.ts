@@ -1,56 +1,47 @@
 // app/api/diag/route.ts
-import { NextResponse } from "next/server";
-import { db } from "@/lib/firestore";
-import { bucket } from "@/lib/gcs";
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
-export const dynamic = "force-dynamic";
+import { NextResponse } from 'next/server';
+import { bucket } from '@/lib/gcs';
+import { db } from '@/lib/firestore';
 
 export async function GET() {
-  const out: any = {
-    projectId:
-      process.env.FIREBASE_PROJECT_ID ||
-      process.env.GCP_PROJECT ||
-      process.env.GOOGLE_CLOUD_PROJECT,
+  const envReport = {
+    // do not print secrets; just lengths/booleans
+    GOOGLE_APPLICATION_CREDENTIALS_JSON_len:
+      (process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON || '').length,
+    GOOGLE_APPLICATION_CREDENTIALS_BASE64_len:
+      (process.env.GOOGLE_APPLICATION_CREDENTIALS_BASE64 || '').length,
+    GOOGLE_CLOUD_PROJECT:
+      process.env.GOOGLE_CLOUD_PROJECT || process.env.GCLOUD_PROJECT || null,
+    GCS_PROJECT: process.env.GCS_PROJECT || null,
+    GCS_BUCKET: process.env.GCS_BUCKET || null,
   };
 
-  // Firestore probe
+  const out: any = {
+    env: envReport,
+    projectId:
+      envReport.GOOGLE_CLOUD_PROJECT ||
+      envReport.GCS_PROJECT ||
+      'undefined',
+  };
+
+  // GCS check
   try {
-    const snap = await db.collection("contentSets").limit(10).get();
-    out.firestore = {
-      ok: true,
-      count: snap.size,
-      ids: snap.docs.map((d) => d.id),
-    };
+    const [meta] = await bucket.getMetadata();
+    out.gcs = { ok: true, bucket: meta.name, location: meta.location };
   } catch (e: any) {
-    out.firestore = { ok: false, error: String(e?.message || e) };
+    out.gcs = { ok: false, error: String(e?.message || e) };
   }
 
-  // GCS probe
+  // Firestore check
   try {
-    if (!bucket) throw new Error("Bucket not configured (GCP_BUCKET missing?)");
-    const [files] = await bucket.getFiles({
-      prefix: "content/sets/",
-      maxResults: 200,
-    });
-    const setIds = Array.from(
-      new Set(
-        files
-          .map((f) => f.name.match(/^content\/sets\/([^/]+)\//)?.[1])
-          .filter(Boolean) as string[]
-      )
-    );
-    out.gcs = {
-      ok: true,
-      bucket: bucket.name,
-      fileCount: files.length,
-      setIds,
-    };
+    // lightweight permission check
+    await db.listCollections();
+    out.firestore = { ok: true };
   } catch (e: any) {
-    out.gcs = {
-      ok: false,
-      bucket: process.env.GCP_BUCKET,
-      error: String(e?.message || e),
-    };
+    out.firestore = { ok: false, error: String(e?.message || e) };
   }
 
   return NextResponse.json(out);

@@ -2,3 +2,7 @@
 .next/
 node_modules/
 .npmrc
+
+# secrets
+vercel-sa.json
+vercel-sa.json.b64
