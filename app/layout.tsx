@@ -3,6 +3,7 @@ import './globals.css';
 import Link from 'next/link';
 import Image from 'next/image';
 import { Analytics } from '@vercel/analytics/next';
+import { SpeedInsights } from '@vercel/speed-insights/next';
 
 export const metadata = {
   title: 'Prestige Prep',
@@ -29,7 +30,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <header className="border-b bg-white/90 backdrop-blur supports-[backdrop-filter]:bg-white/60">
           <div className="container mx-auto px-4 h-12 flex items-center gap-6">
             <Link href="/" className="flex items-center gap-2">
-              {/* If the logo is present, show it; otherwise just the text */}
               <Image
                 src="/prestige-logo.png"
                 alt="Prestige Prep"
@@ -54,8 +54,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           </div>
         </header>
 
-        {/* Page content */}
-        {children}
+        {/* Page content (unified top spacing here) */}
+        <main className="container mx-auto px-4 pt-8 md:pt-12">
+          {children}
+        </main>
 
         {/* Footer */}
         <footer className="mt-16 border-t bg-white">
@@ -75,8 +77,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           </div>
         </footer>
 
+        {/* Observability */}
         <Analytics />
+        <SpeedInsights />
       </body>
     </html>
   );
 }
+

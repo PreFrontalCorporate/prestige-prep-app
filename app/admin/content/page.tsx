@@ -1,96 +1,120 @@
 // app/admin/content/page.tsx
-import { headers } from 'next/headers';
-import { absoluteUrl } from '@/lib/base-url';
-import { revalidatePath } from 'next/cache';
+'use client';
 
-type SetInfo = {
+import { useEffect, useState } from 'react';
+import Link from 'next/link';
+
+type ContentSet = {
   name: string;
-  exam?: string;
-  count?: number | null;
   gcsPath?: string | null;
+  count?: number | null;
+  exam?: string | null;
 };
 
-async function fetchSets() {
-  const hdrs = headers();
-  const res = await fetch(absoluteUrl('/api/contentSets', hdrs), {
-    cache: 'no-store',
-  });
-  if (!res.ok) return [] as SetInfo[];
-  const json = await res.json().catch(() => ({}));
-  return (json?.sets ?? []) as SetInfo[];
-}
+export default function ContentAdminPage() {
+  const [rows, setRows] = useState<ContentSet[] | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
 
-export default async function ContentAdminPage() {
-  const sets = await fetchSets();
+  async function load() {
+    try {
+      setMsg(null);
+      const res = await fetch('/api/contentSets', { cache: 'no-store' });
+      if (!res.ok) throw new Error(await res.text());
 
-  async function importSetAction(formData: FormData) {
-    'use server';
-    const setName = String(formData.get('set') ?? '').trim();
-    if (!setName) return;
-    const hdrs = headers();
-    await fetch(absoluteUrl('/api/loadSet', hdrs), {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ setName }),
-      cache: 'no-store',
-    });
-    revalidatePath('/drills');
-    revalidatePath('/admin/content');
+      const data = await res.json();
+      const sets: ContentSet[] = Array.isArray(data) ? data : data.sets || [];
+      setRows(sets);
+    } catch (e: any) {
+      setMsg(`Failed to load content sets: ${e?.message ?? e}`);
+      setRows([]);
+    }
   }
 
-  return (
-    <main className="container mx-auto px-4 pt-10">
-      <h1 className="text-3xl font-semibold mb-6">Content Admin</h1>
+  async function importSet(name: string) {
+    try {
+      setLoading(true);
+      setMsg(`Importing "${name}"...`);
+      const res = await fetch('/api/loadSet', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ setName: name }),
+      });
+      if (!res.ok) {
+        const txt = await res.text();
+        throw new Error(txt || `HTTP ${res.status}`);
+      }
+      setMsg(`Imported "${name}". You can now run drills.`);
+      await load();
+    } catch (e: any) {
+      setMsg(`Import failed: ${e?.message ?? e}`);
+    } finally {
+      setLoading(false);
+    }
+  }
 
-      {sets.length === 0 ? (
-        <div className="rounded-lg border bg-white shadow-sm p-6">
-          <p className="text-slate-700 mb-2">No sets found.</p>
-          <a className="text-blue-600 hover:underline" href="/drills">
-            Go to Drills →
-          </a>
-        </div>
-      ) : (
-        <div className="rounded-lg border bg-white shadow-sm overflow-hidden">
-          <table className="min-w-full text-sm">
-            <thead className="bg-slate-50 text-slate-700">
-              <tr>
-                <th className="text-left px-4 py-3">Set</th>
-                <th className="text-left px-4 py-3">GCS Path</th>
-                <th className="text-left px-4 py-3">Count</th>
-                <th className="text-left px-4 py-3">Exam</th>
-                <th className="text-left px-4 py-3">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sets.map((s) => (
-                <tr key={s.name} className="border-t">
-                  <td className="px-4 py-3 font-medium">{s.name}</td>
-                  <td className="px-4 py-3">{s.gcsPath ?? '—'}</td>
-                  <td className="px-4 py-3">{s.count ?? '—'}</td>
-                  <td className="px-4 py-3">{s.exam ?? '—'}</td>
-                  <td className="px-4 py-3">
-                    <form action={importSetAction}>
-                      <input type="hidden" name="set" value={s.name} />
-                      <button
-                        type="submit"
-                        className="inline-flex items-center rounded-md bg-blue-600 px-3 py-1.5 text-white hover:bg-blue-700 transition"
-                      >
-                        Import
-                      </button>
-                    </form>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+  useEffect(() => {
+    load();
+  }, []);
+
+  return (
+    <div className="pb-12">
+      <h1 className="text-3xl font-bold tracking-tight">Content Admin</h1>
+      <p className="mt-2 text-slate-600">Import generated sets into the app.</p>
+
+      {msg && (
+        <div className="mt-4 text-sm rounded-lg border p-3 bg-yellow-50 border-yellow-200 text-yellow-900">
+          {msg}
         </div>
       )}
 
-      <div className="mt-6">
-        <a className="text-blue-600 hover:underline" href="/drills">
-          Go to Drills →
-        </a>
+      <div className="mt-6 overflow-x-auto rounded-2xl bg-white shadow ring-1 ring-slate-100">
+        <table className="min-w-full text-sm">
+          <thead className="bg-slate-50 text-slate-600">
+            <tr>
+              <th className="px-4 py-2 text-left font-medium">Set</th>
+              <th className="px-4 py-2 text-left font-medium">GCS Path</th>
+              <th className="px-4 py-2 text-left font-medium">Count</th>
+              <th className="px-4 py-2 text-left font-medium">Exam</th>
+              <th className="px-4 py-2 text-left font-medium">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {(rows ?? []).length === 0 && (
+              <tr>
+                <td className="px-4 py-6 text-slate-500" colSpan={5}>
+                  No sets found.
+                </td>
+              </tr>
+            )}
+
+            {(rows ?? []).map((r) => (
+              <tr key={r.name} className="border-t">
+                <td className="px-4 py-3 font-medium text-slate-900">{r.name ?? '—'}</td>
+                <td className="px-4 py-3 text-slate-700">{r.gcsPath ?? '—'}</td>
+                <td className="px-4 py-3 text-slate-700">{r.count ?? '—'}</td>
+                <td className="px-4 py-3 text-slate-700">{r.exam ?? '—'}</td>
+                <td className="px-4 py-3">
+                  <button
+                    onClick={() => importSet(r.name)}
+                    disabled={loading}
+                    className="px-3 py-1.5 rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+                    aria-label={`Import ${r.name}`}
+                  >
+                    {loading ? 'Working…' : 'Import'}
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
-    </main>
+
+      <div className="mt-6">
+        <Link className="text-blue-600 hover:underline" href="/drills">
+          Go to Drills →
+        </Link>
+      </div>
+    </div>
   );
 }
