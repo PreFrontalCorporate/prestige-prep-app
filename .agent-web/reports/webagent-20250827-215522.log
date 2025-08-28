@@ -1,0 +1,117 @@
+[WEBAGENT] 2025-08-27T21:55:22+0000 Start model=gemini-2.5-pro iters=25 timeout=9000
+[WEBAGENT] repo=/home/donkey_right_productions/prestige-prep-app
+[WEBAGENT] node=/home/donkey_right_productions/.nvm/versions/node/v20.19.4/bin/node
+[WEBAGENT] pnpm=/home/donkey_right_productions/.nvm/versions/node/v20.19.4/bin/pnpm
+v20.19.4
+10.15.0
+
+> prestige-prep-app@0.1.0 build /home/donkey_right_productions/prestige-prep-app
+> next build
+
+  ▲ Next.js 14.2.5
+  - Environments: .env.local
+
+   Creating an optimized production build ...
+ ✓ Compiled successfully
+   Linting and checking validity of types ...
+   Collecting page data ...
+[gcp-auth] No credentials JSON provided; relying on default ADC (GCE/Cloud Run) or existing key on disk.
+[gcp-auth] No credentials JSON provided; relying on default ADC (GCE/Cloud Run) or existing key on disk.
+[gcp-auth] No credentials JSON provided; relying on default ADC (GCE/Cloud Run) or existing key on disk.
+[gcp-auth] No credentials JSON provided; relying on default ADC (GCE/Cloud Run) or existing key on disk.
+[gcp-auth] No credentials JSON provided; relying on default ADC (GCE/Cloud Run) or existing key on disk.
+[gcp-auth] No credentials JSON provided; relying on default ADC (GCE/Cloud Run) or existing key on disk.
+[gcp-auth] No credentials JSON provided; relying on default ADC (GCE/Cloud Run) or existing key on disk.
+   Generating static pages (0/13) ...
+   Generating static pages (3/13) 
+   Generating static pages (6/13) 
+   Generating static pages (9/13) 
+ ✓ Generating static pages (13/13)
+   Finalizing page optimization ...
+   Collecting build traces ...
+
+Route (app)                              Size     First Load JS
+┌ ○ /                                    6.96 kB          94 kB
+├ ○ /_not-found                          871 B          87.9 kB
+├ ƒ /admin/agent                         146 B          87.2 kB
+├ ○ /admin/content                       1.92 kB          89 kB
+├ ƒ /admin/web                           857 B          87.9 kB
+├ ƒ /api/checkin                         0 B                0 B
+├ ƒ /api/contentSets                     0 B                0 B
+├ ƒ /api/currentSet                      0 B                0 B
+├ ƒ /api/diag                            0 B                0 B
+├ ƒ /api/ingest                          0 B                0 B
+├ ƒ /api/items                           0 B                0 B
+├ ƒ /api/loadSet                         0 B                0 B
+├ ○ /api/locks                           0 B                0 B
+├ ƒ /api/webagent/log                    0 B                0 B
+├ ○ /attendance                          603 B          87.7 kB
+├ ○ /dashboard                           146 B          87.2 kB
+└ ○ /drills                              1.2 kB         88.3 kB
++ First Load JS shared by all            87.1 kB
+  ├ chunks/959-790519fc1ccc87f3.js       31.5 kB
+  ├ chunks/ee827bfb-9486b72523fb8cd3.js  53.6 kB
+  └ other shared chunks (total)          1.9 kB
+
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+
+[WEBAGENT] Baseline build rc: 0
+[WEBAGENT] Baseline build rc: 0
+
+> prestige-prep-app@0.1.0 build /home/donkey_right_productions/prestige-prep-app
+> next build
+
+  ▲ Next.js 14.2.5
+  - Environments: .env.local
+
+   Creating an optimized production build ...
+ ✓ Compiled successfully
+   Linting and checking validity of types ...
+   Collecting page data ...
+[gcp-auth] No credentials JSON provided; relying on default ADC (GCE/Cloud Run) or existing key on disk.
+[gcp-auth] No credentials JSON provided; relying on default ADC (GCE/Cloud Run) or existing key on disk.
+[gcp-auth] No credentials JSON provided; relying on default ADC (GCE/Cloud Run) or existing key on disk.
+[gcp-auth] No credentials JSON provided; relying on default ADC (GCE/Cloud Run) or existing key on disk.
+[gcp-auth] No credentials JSON provided; relying on default ADC (GCE/Cloud Run) or existing key on disk.
+[gcp-auth] No credentials JSON provided; relying on default ADC (GCE/Cloud Run) or existing key on disk.
+[gcp-auth] No credentials JSON provided; relying on default ADC (GCE/Cloud Run) or existing key on disk.
+   Generating static pages (0/13) ...
+   Generating static pages (3/13) 
+   Generating static pages (6/13) 
+   Generating static pages (9/13) 
+ ✓ Generating static pages (13/13)
+   Finalizing page optimization ...
+   Collecting build traces ...
+
+Route (app)                              Size     First Load JS
+┌ ○ /                                    6.96 kB          94 kB
+├ ○ /_not-found                          871 B          87.9 kB
+├ ƒ /admin/agent                         146 B          87.2 kB
+├ ○ /admin/content                       1.92 kB          89 kB
+├ ƒ /admin/web                           857 B          87.9 kB
+├ ƒ /api/checkin                         0 B                0 B
+├ ƒ /api/contentSets                     0 B                0 B
+├ ƒ /api/currentSet                      0 B                0 B
+├ ƒ /api/diag                            0 B                0 B
+├ ƒ /api/ingest                          0 B                0 B
+├ ƒ /api/items                           0 B                0 B
+├ ƒ /api/loadSet                         0 B                0 B
+├ ○ /api/locks                           0 B                0 B
+├ ƒ /api/webagent/log                    0 B                0 B
+├ ○ /attendance                          603 B          87.7 kB
+├ ○ /dashboard                           146 B          87.2 kB
+└ ○ /drills                              1.2 kB         88.3 kB
++ First Load JS shared by all            87.1 kB
+  ├ chunks/959-790519fc1ccc87f3.js       31.5 kB
+  ├ chunks/ee827bfb-9486b72523fb8cd3.js  53.6 kB
+  └ other shared chunks (total)          1.9 kB
+
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+
+
+[WEBAGENT] Build succeeded on iteration 0. Stopping.
+[WEBAGENT] DONE: SUCCESS
