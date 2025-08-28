@@ -1,48 +1,57 @@
 // app/api/loadSet/route.ts
-import { NextResponse } from "next/server";
-import { db } from "@/lib/firestore";
+import { NextRequest, NextResponse } from "next/server";
 import { readTextFile } from "@/lib/gcs";
+import { db } from "@/lib/firestore";
 
+export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function GET(req: Request) {
-  const { searchParams } = new URL(req.url);
-  const set = searchParams.get("set");
-  if (!set) {
-    return NextResponse.json({ ok: false, error: "missing set" }, { status: 400 });
-  }
+function cors() {
+  return {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "POST,OPTIONS",
+    "Access-Control-Allow-Headers": "content-type",
+  };
+}
 
-  let count = 0;
+export async function OPTIONS() {
+  return new Response(null, { status: 204, headers: cors() });
+}
+
+type Body = { setName?: string };
+
+async function saveCurrentSet(set: string) {
+  // Try Firestore first, fall back to process memory (survives per-node)
   try {
-    const metaText = await readTextFile(`content/sets/${set}/metadata.json`);
-    const meta = JSON.parse(metaText);
-    count = Number(meta?.count || 0);
+    await db.collection("meta").doc("currentSet").set(
+      { set, updatedAt: new Date().toISOString() },
+      { merge: true },
+    );
   } catch {
-    try {
-      const itemsText = await readTextFile(`content/sets/${set}/items.jsonl`);
-      count = itemsText.split(/\r?\n/).filter(Boolean).length;
-    } catch {
-      // keep count=0
+    (globalThis as any).__CURRENT_SET__ = set;
+  }
+}
+
+export async function POST(req: NextRequest) {
+  try {
+    const { setName } = (await req.json()) as Body;
+    if (!setName) {
+      return NextResponse.json(
+        { ok: false, error: "setName required" },
+        { status: 400, headers: cors() },
+      );
     }
-  }
 
-  // Persist runtime marker (works across serverless invocations)
-  try {
-    await db
-      .collection("runtime")
-      .doc("currentSet")
-      .set({ id: set, count, updatedAt: Date.now() }, { merge: true });
-  } catch {
-    // non-fatal
-  }
+    // Sanity check that the set exists in GCS (throws if not found)
+    await readTextFile(`sets/${setName}/index.json`);
 
-  // Set a cookie so the browser carries the choice around
-  const res = NextResponse.json({ ok: true, set, count });
-  res.cookies.set("pp-set", set, {
-    path: "/",
-    httpOnly: false,
-    sameSite: "lax",
-    maxAge: 60 * 60 * 24 * 30, // 30d
-  });
-  return res;
+    await saveCurrentSet(setName);
+
+    return NextResponse.json({ ok: true, set: setName }, { headers: cors() });
+  } catch (err: any) {
+    return NextResponse.json(
+      { ok: false, error: err?.message ?? "unknown error" },
+      { status: 500, headers: cors() },
+    );
+  }
 }
