@@ -1,25 +1,20 @@
 // lib/firestore.ts
-import "./gcp-auth";
-import { initializeApp, applicationDefault, getApps } from "firebase-admin/app";
-import { getFirestore } from "firebase-admin/firestore";
+// Server-only Firestore singleton via firebase-admin.
+// Uses ADC on GCE/Cloud Run if GOOGLE_APPLICATION_CREDENTIALS isn't provided.
 
-const PROJECT_ID =
-  process.env.FIREBASE_PROJECT_ID ||
-  process.env.GCP_PROJECT ||
-  process.env.GOOGLE_CLOUD_PROJECT;
+import 'server-only';
+import { getApps, initializeApp, applicationDefault } from 'firebase-admin/app';
+import { getFirestore } from 'firebase-admin/firestore';
 
-if (!PROJECT_ID) {
-  console.warn(
-    "[firestore] No project id in env (FIREBASE_PROJECT_ID/GCP_PROJECT/GOOGLE_CLOUD_PROJECT)."
-  );
-}
+function getOrInitApp() {
+  const apps = getApps();
+  if (apps.length) return apps[0];
 
-if (!getApps().length) {
-  initializeApp({
-    projectId: PROJECT_ID,
-    credential: applicationDefault(), // picked up from GOOGLE_APPLICATION_CREDENTIALS (set by lib/gcp-auth)
+  return initializeApp({
+    // On the VM we rely on ADC; locally you can also set GOOGLE_APPLICATION_CREDENTIALS
+    credential: applicationDefault(),
   });
 }
 
-export const db = getFirestore();
-db.settings({ ignoreUndefinedProperties: true });
+const app = getOrInitApp();
+export const db = getFirestore(app);
