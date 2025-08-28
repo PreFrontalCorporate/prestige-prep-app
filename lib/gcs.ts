@@ -61,7 +61,7 @@ export async function readTextFile(path: string): Promise<string> {
   return buf.toString("utf8");
 }
 
-/** List all sets/*/index.json (name + path) */
+// List all 'sets/*/index.json' (name + path)
 export async function listIndexJsonUnderSets(): Promise<
   { name: string; path: string }[]
 > {
