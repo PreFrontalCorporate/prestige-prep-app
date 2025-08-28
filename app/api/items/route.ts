@@ -20,15 +20,17 @@ export function OPTIONS() {
 export async function GET(req: NextRequest) {
   try {
     const url = new URL(req.url);
-    let set =
+
+    // Start with any query-provided set name
+    let set: string | null =
       url.searchParams.get("set") ||
       url.searchParams.get("setName") ||
       url.searchParams.get("name");
 
-    // Fallback to Firestore currentSet if not provided
+    // Fallback to Firestore meta/currentSet if no set provided
     if (!set) {
       const snap = await db.collection("meta").doc("currentSet").get();
-      set = (snap.exists ? (snap.get("set") as string) : null) || undefined;
+      set = snap.exists ? ((snap.get("set") as string) ?? null) : null;
     }
 
     if (!set) {
@@ -40,10 +42,7 @@ export async function GET(req: NextRequest) {
 
     const limit = Math.max(
       0,
-      Math.min(
-        1000,
-        parseInt(url.searchParams.get("limit") || "0", 10) || 0
-      )
+      Math.min(1000, parseInt(url.searchParams.get("limit") || "0", 10) || 0)
     );
     const offset = Math.max(
       0,
@@ -69,4 +68,3 @@ export async function GET(req: NextRequest) {
     );
   }
 }
-
